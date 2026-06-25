@@ -216,9 +216,9 @@ peer.on('connection', c => {
   c.on('data', raw => {
     const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (msg.type === 'gyro') {
-      // gamma: -90 (left) to 90 (right), clamp to ±45
-      const tilt = Math.max(-45, Math.min(45, msg.gamma));
-      targetX = W / 2 + (tilt / 45) * (W / 2 - 30);
+      // gamma: clamp to ±4.5° for high sensitivity
+      const tilt = Math.max(-4.5, Math.min(4.5, msg.gamma));
+      targetX = W / 2 + (tilt / 4.5) * (W / 2 - 30);
     } else if (msg.type === 'restart') {
       if (gameOver) restartGame();
     }
