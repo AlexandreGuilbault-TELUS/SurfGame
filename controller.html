@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Surf Controller</title>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-overflow-scrolling: auto;
+  font-family: 'Courier New', monospace;
+  background: #0a1628;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.screen {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 32px;
+  text-align: center;
+}
+.screen.active { display: flex; }
+
+/* ── Connecting Screen ── */
+#connecting h2 {
+  color: #00e5ff;
+  font-size: 20px;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid #1a3a5a;
+  border-top: 4px solid #00e5ff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#connect-status {
+  color: #88ccdd;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+/* ── Permission Screen ── */
+#permission h2 {
+  color: #ffcc00;
+  font-size: 18px;
+  margin-bottom: 24px;
+  text-transform: uppercase;
+}
+#permission p {
+  color: #88ccdd;
+  font-size: 14px;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+#enable-btn {
+  background: #00e5ff;
+  color: #0a1628;
+  border: none;
+  padding: 20px 40px;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(0,229,255,0.3); }
+  50% { transform: scale(1.05); box-shadow: 0 0 40px rgba(0,229,255,0.6); }
+}
+
+/* ── Active Screen ── */
+#active {
+  background: linear-gradient(180deg, #0a2a4a 0%, #0e4a7a 100%);
+}
+#active h2 {
+  color: #00e5ff;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  margin-bottom: 40px;
+}
+#tilt-indicator {
+  width: 200px;
+  height: 200px;
+  position: relative;
+}
+#tilt-dot {
+  width: 24px;
+  height: 24px;
+  background: #00e5ff;
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 20px rgba(0,229,255,0.6);
+  transition: left 0.1s ease-out;
+}
+#tilt-ring {
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(0,229,255,0.3);
+  border-radius: 50%;
+  position: absolute;
+}
+#tilt-line {
+  position: absolute;
+  top: 50%;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  background: rgba(0,229,255,0.2);
+}
+#tilt-line-v {
+  position: absolute;
+  left: 50%;
+  top: 10%;
+  bottom: 10%;
+  width: 2px;
+  background: rgba(0,229,255,0.2);
+}
+#active-status {
+  color: #4a8;
+  font-size: 14px;
+  margin-top: 40px;
+}
+
+/* ── Game Over Screen ── */
+#gameover {
+  background: rgba(10,22,40,0.95);
+}
+#gameover h1 {
+  color: #ff4444;
+  font-size: 36px;
+  text-shadow: 2px 2px 0 #000;
+  margin-bottom: 16px;
+}
+#gameover-score {
+  color: #ffcc00;
+  font-size: 28px;
+  margin-bottom: 40px;
+}
+#restart-btn {
+  background: #00e5ff;
+  color: #0a1628;
+  border: none;
+  padding: 20px 40px;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* ── Landscape Warning ── */
+#landscape-warning {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: #0a1628;
+  z-index: 100;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 32px;
+}
+#landscape-warning h2 {
+  color: #ffcc00;
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+#landscape-warning p {
+  color: #88ccdd;
+  font-size: 14px;
+}
+
+@media (orientation: landscape) {
+  #landscape-warning { display: flex !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- Landscape Warning -->
+<div id="landscape-warning">
+  <h2>ROTATE YOUR PHONE</h2>
+  <p>Hold your phone in portrait mode to play</p>
+</div>
+
+<!-- Screen 1: Connecting -->
+<div id="connecting" class="screen active">
+  <h2>Connecting...</h2>
+  <div class="spinner"></div>
+  <p id="connect-status">Finding game session...</p>
+</div>
+
+<!-- Screen 2: Permission -->
+<div id="permission" class="screen">
+  <h2>Motion Control Required</h2>
+  <p>This game uses your phone's tilt sensor to steer the surfer.</p>
+  <button id="enable-btn">TAP TO ENABLE<br>MOTION CONTROL</button>
+</div>
+
+<!-- Screen 3: Active -->
+<div id="active" class="screen">
+  <h2>TILT TO STEER</h2>
+  <div id="tilt-indicator">
+    <div id="tilt-ring"></div>
+    <div id="tilt-line"></div>
+    <div id="tilt-line-v"></div>
+    <div id="tilt-dot"></div>
+  </div>
+  <p id="active-status">Connected</p>
+</div>
+
+<!-- Screen 4: Game Over -->
+<div id="gameover" class="screen">
+  <h1>WIPEOUT!</h1>
+  <p id="gameover-score">Score: 0</p>
+  <button id="restart-btn">TAP TO PLAY AGAIN</button>
+</div>
+
+<script>
+// ── Screen Management ──
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ── Get peer ID from URL ──
+const params = new URLSearchParams(window.location.search);
+const gamePeerId = params.get('id');
+if (!gamePeerId) {
+  document.getElementById('connect-status').textContent = 'Error: No game ID in URL. Scan the QR code again.';
+  document.querySelector('.spinner').style.display = 'none';
+}
+
+// ── PeerJS Connection ──
+let conn = null;
+const peer = new Peer(null, {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  }
+});
+
+peer.on('open', () => {
+  if (!gamePeerId) return;
+  document.getElementById('connect-status').textContent = 'Connecting to game...';
+  conn = peer.connect(gamePeerId, { reliable: true });
+
+  conn.on('open', () => {
+    document.getElementById('connect-status').textContent = 'Connected!';
+    // Check if we need permission or can skip
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS — need permission via user gesture
+      setTimeout(() => showScreen('permission'), 500);
+    } else {
+      // Android / desktop — no permission needed
+      setTimeout(() => {
+        startGyro();
+        showScreen('active');
+      }, 500);
+    }
+  });
+
+  conn.on('data', raw => {
+    const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (msg.type === 'gameover') {
+      document.getElementById('gameover-score').textContent = 'Score: ' + msg.score;
+      showScreen('gameover');
+    } else if (msg.type === 'connected') {
+      // acknowledgment from game
+    }
+  });
+
+  conn.on('close', () => {
+    showScreen('connecting');
+    document.getElementById('connect-status').textContent = 'Disconnected. Scan QR code again.';
+    document.querySelector('.spinner').style.display = 'none';
+  });
+
+  conn.on('error', err => {
+    document.getElementById('connect-status').textContent = 'Connection error: ' + err;
+  });
+});
+
+peer.on('error', err => {
+  document.getElementById('connect-status').textContent = 'Error: ' + err.type + '. Check your connection.';
+  document.querySelector('.spinner').style.display = 'none';
+});
+
+// ── Enable Motion Button (iOS permission) ──
+document.getElementById('enable-btn').addEventListener('click', async () => {
+  try {
+    const response = await DeviceOrientationEvent.requestPermission();
+    if (response === 'granted') {
+      startGyro();
+      showScreen('active');
+    } else {
+      alert('Motion permission denied. Please allow motion access to play.');
+    }
+  } catch (e) {
+    alert('Could not request motion permission: ' + e.message);
+  }
+});
+
+// ── Gyro Streaming ──
+let gyroInterval = null;
+let lastBeta = 0, lastGamma = 0;
+
+function startGyro() {
+  window.addEventListener('deviceorientation', e => {
+    lastBeta = e.beta || 0;
+    lastGamma = e.gamma || 0;
+
+    // Update tilt indicator
+    const dot = document.getElementById('tilt-dot');
+    const clampedGamma = Math.max(-45, Math.min(45, lastGamma));
+    const pct = 50 + (clampedGamma / 45) * 40;
+    dot.style.left = pct + '%';
+    const clampedBeta = Math.max(-45, Math.min(45, lastBeta - 45));
+    const pctY = 50 + (clampedBeta / 45) * 40;
+    dot.style.top = pctY + '%';
+  });
+
+  // Send gyro data at ~30Hz
+  gyroInterval = setInterval(() => {
+    if (conn && conn.open) {
+      conn.send(JSON.stringify({
+        type: 'gyro',
+        beta: lastBeta,
+        gamma: lastGamma
+      }));
+    }
+  }, 33);
+
+  // Request wake lock
+  requestWakeLock();
+}
+
+// ── Restart Button ──
+document.getElementById('restart-btn').addEventListener('click', () => {
+  if (conn && conn.open) {
+    conn.send(JSON.stringify({ type: 'restart' }));
+    showScreen('active');
+  }
+});
+
+// ── Wake Lock ──
+let wakeLock = null;
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        // Re-request on visibility change
+      });
+    }
+  } catch (e) {
+    // Wake Lock not supported or failed — non-critical
+  }
+}
+
+// Re-request wake lock when page becomes visible again
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !wakeLock) {
+    requestWakeLock();
+  }
+});
+
+// ── Prevent scroll/bounce ──
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+</script>
+</body>
+</html>

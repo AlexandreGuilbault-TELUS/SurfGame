@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surf Game</title>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a1628;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+}
+canvas { display: block; image-rendering: pixelated; }
+#overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+#qr-container {
+  background: rgba(0,0,0,0.85);
+  border: 3px solid #00e5ff;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  pointer-events: auto;
+}
+#qr-container h2 {
+  color: #00e5ff;
+  font-size: 18px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+#qr-container p {
+  color: #88ccdd;
+  font-size: 13px;
+  margin-top: 12px;
+}
+#qr-box { margin: 0 auto; }
+#status {
+  color: #ffcc00;
+  font-size: 14px;
+  margin-top: 8px;
+}
+#score-display {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  color: #fff;
+  font-size: 24px;
+  text-shadow: 2px 2px 0 #000;
+  z-index: 5;
+}
+#game-over-overlay {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+}
+#game-over-overlay h1 {
+  color: #ff4444;
+  font-size: 48px;
+  text-shadow: 3px 3px 0 #000;
+  margin-bottom: 12px;
+}
+#game-over-overlay p {
+  color: #fff;
+  font-size: 24px;
+}
+#game-over-overlay .sub {
+  color: #88ccdd;
+  font-size: 16px;
+  margin-top: 16px;
+}
+#keyboard-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #556;
+  font-size: 12px;
+  z-index: 5;
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="score-display">SCORE: 0</div>
+<div id="keyboard-hint">Arrow keys to steer • Space to restart</div>
+
+<div id="overlay">
+  <div id="qr-container">
+    <h2>Scan to Connect Controller</h2>
+    <div id="qr-box"></div>
+    <p id="status">Initializing...</p>
+  </div>
+</div>
+
+<div id="game-over-overlay">
+  <h1>WIPEOUT!</h1>
+  <p id="final-score">Score: 0</p>
+  <p class="sub" id="restart-hint">Press SPACE or tap phone to restart</p>
+</div>
+
+<script>
+// ── Canvas Setup ──
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 400, H = 700;
+canvas.width = W;
+canvas.height = H;
+
+// Scale canvas to fit screen
+function fitCanvas() {
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width = (W * scale) + 'px';
+  canvas.style.height = (H * scale) + 'px';
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+// ── Game State ──
+let surfer = { x: W / 2, y: H - 120, w: 28, h: 36 };
+let targetX = surfer.x;
+let obstacles = [];
+let particles = [];
+let foamLines = [];
+let score = 0;
+let gameRunning = false;
+let gameOver = false;
+let scrollSpeed = 2;
+let spawnTimer = 0;
+let spawnInterval = 90;
+let waveOffset = 0;
+let controllerConnected = false;
+let conn = null;
+
+// ── Colors ──
+const OCEAN_DARK = '#0a4a7a';
+const OCEAN_MID = '#0e6aaa';
+const OCEAN_LIGHT = '#1288cc';
+const FOAM = '#aaeeff';
+const SURFER_BODY = '#ffcc66';
+const SURFER_SHORTS = '#ff6644';
+const BOARD_COLOR = '#ffffff';
+const BOARD_STRIPE = '#ff4488';
+
+// ── Keyboard Input ──
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' && gameOver) restartGame();
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// ── PeerJS Setup ──
+const peer = new Peer(null, {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  }
+});
+
+peer.on('open', id => {
+  document.getElementById('status').textContent = 'Waiting for controller...';
+  const base = window.location.href.replace(/\/[^/]*$/, '/');
+  const url = base + 'controller.html?id=' + id;
+
+  document.getElementById('qr-box').innerHTML = '';
+  new QRCode(document.getElementById('qr-box'), {
+    text: url,
+    width: 200,
+    height: 200,
+    colorDark: '#00e5ff',
+    colorLight: '#0a1628'
+  });
+});
+
+peer.on('error', err => {
+  document.getElementById('status').textContent = 'Connection error: ' + err.type;
+});
+
+peer.on('connection', c => {
+  if (conn) { c.close(); return; } // single controller only
+  conn = c;
+  controllerConnected = true;
+  document.getElementById('status').textContent = 'Controller connected!';
+
+  c.on('open', () => {
+    c.send(JSON.stringify({ type: 'connected' }));
+    setTimeout(() => {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('keyboard-hint').style.display = 'none';
+      if (!gameRunning && !gameOver) startGame();
+    }, 800);
+  });
+
+  c.on('data', raw => {
+    const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (msg.type === 'gyro') {
+      // gamma: -90 (left) to 90 (right), clamp to ±45
+      const tilt = Math.max(-45, Math.min(45, msg.gamma));
+      targetX = W / 2 + (tilt / 45) * (W / 2 - 30);
+    } else if (msg.type === 'restart') {
+      if (gameOver) restartGame();
+    }
+  });
+
+  c.on('close', () => {
+    conn = null;
+    controllerConnected = false;
+    document.getElementById('overlay').style.display = 'flex';
+    document.getElementById('status').textContent = 'Controller disconnected. Scan again.';
+  });
+});
+
+// ── Start without controller (keyboard) ──
+setTimeout(() => {
+  if (!gameRunning && !controllerConnected) {
+    document.getElementById('overlay').style.opacity = '0.6';
+  }
+}, 3000);
+
+window.addEventListener('keydown', e => {
+  if (!controllerConnected && !gameRunning && !gameOver && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+    document.getElementById('overlay').style.display = 'none';
+    startGame();
+  }
+});
+
+// ── Obstacle Types ──
+const OBSTACLE_TYPES = [
+  { name: 'rock', w: 32, h: 28, draw: drawRock },
+  { name: 'shark', w: 36, h: 24, draw: drawShark },
+  { name: 'wood', w: 40, h: 14, draw: drawWood }
+];
+
+function drawRock(x, y, w, h) {
+  ctx.fillStyle = '#556677';
+  ctx.fillRect(x + 4, y + 6, w - 8, h - 6);
+  ctx.fillRect(x + 2, y + 10, w - 4, h - 10);
+  ctx.fillStyle = '#445566';
+  ctx.fillRect(x + 6, y + 4, w - 12, 4);
+  ctx.fillStyle = '#667788';
+  ctx.fillRect(x + 8, y + 8, 6, 4);
+  // foam around rock
+  ctx.fillStyle = FOAM;
+  ctx.fillRect(x, y + h - 2, 4, 2);
+  ctx.fillRect(x + w - 4, y + h - 2, 4, 2);
+}
+
+function drawShark(x, y, w, h) {
+  // fin
+  ctx.fillStyle = '#778899';
+  ctx.fillRect(x + 12, y, 12, 6);
+  ctx.fillRect(x + 14, y + 6, 8, 6);
+  ctx.fillRect(x + 16, y + 12, 4, 6);
+  // body in water hint
+  ctx.fillStyle = '#334466';
+  ctx.fillRect(x + 4, y + 14, 28, 8);
+  ctx.fillRect(x, y + 18, 36, 4);
+  // eye
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(x + 6, y + 16, 2, 2);
+}
+
+function drawWood(x, y, w, h) {
+  ctx.fillStyle = '#8B6914';
+  ctx.fillRect(x, y + 2, w, h - 4);
+  ctx.fillStyle = '#6B4914';
+  ctx.fillRect(x + 2, y, w - 4, 2);
+  ctx.fillRect(x + 2, y + h - 2, w - 4, 2);
+  // grain lines
+  ctx.fillStyle = '#7B5914';
+  ctx.fillRect(x + 4, y + 5, w - 8, 1);
+  ctx.fillRect(x + 6, y + 9, w - 12, 1);
+}
+
+// ── Draw Surfer ──
+function drawSurfer(x, y) {
+  const cx = x - surfer.w / 2;
+  const cy = y - surfer.h / 2;
+
+  // Board
+  ctx.fillStyle = BOARD_COLOR;
+  ctx.fillRect(cx - 2, cy + 14, 32, 20);
+  ctx.fillRect(cx + 2, cy + 12, 28, 2);
+  ctx.fillRect(cx + 2, cy + 34, 28, 2);
+  ctx.fillRect(cx + 6, cy + 36, 20, 2);
+  ctx.fillRect(cx + 10, cy + 38, 12, 2);
+  // Board stripe
+  ctx.fillStyle = BOARD_STRIPE;
+  ctx.fillRect(cx + 12, cy + 14, 8, 24);
+
+  // Body
+  ctx.fillStyle = SURFER_BODY;
+  ctx.fillRect(cx + 10, cy + 4, 12, 6);  // head
+  ctx.fillRect(cx + 8, cy + 10, 16, 12);  // torso
+
+  // Shorts
+  ctx.fillStyle = SURFER_SHORTS;
+  ctx.fillRect(cx + 8, cy + 22, 16, 6);
+
+  // Arms
+  ctx.fillStyle = SURFER_BODY;
+  ctx.fillRect(cx + 2, cy + 12, 6, 4);  // left arm
+  ctx.fillRect(cx + 24, cy + 12, 6, 4);  // right arm
+
+  // Legs
+  ctx.fillRect(cx + 10, cy + 28, 5, 6);
+  ctx.fillRect(cx + 17, cy + 28, 5, 6);
+
+  // Hair
+  ctx.fillStyle = '#cc8833';
+  ctx.fillRect(cx + 10, cy + 2, 12, 4);
+  ctx.fillRect(cx + 8, cy + 2, 4, 2);
+
+  // Eyes
+  ctx.fillStyle = '#000';
+  ctx.fillRect(cx + 12, cy + 6, 2, 2);
+  ctx.fillRect(cx + 18, cy + 6, 2, 2);
+
+  // Wake/splash behind surfer
+  ctx.fillStyle = 'rgba(170,238,255,0.5)';
+  const wt = Date.now() / 100;
+  ctx.fillRect(cx + 6 + Math.sin(wt) * 3, cy + 40, 4, 3);
+  ctx.fillRect(cx + 18 + Math.cos(wt) * 3, cy + 42, 4, 3);
+  ctx.fillRect(cx + 12 + Math.sin(wt + 1) * 2, cy + 44, 6, 2);
+}
+
+// ── Draw Ocean ──
+function drawOcean() {
+  // Gradient background
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#063a5a');
+  grad.addColorStop(0.5, OCEAN_DARK);
+  grad.addColorStop(1, OCEAN_MID);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Wave lines
+  waveOffset = (waveOffset + scrollSpeed * 0.5) % 40;
+  ctx.fillStyle = 'rgba(20,140,210,0.3)';
+  for (let y = -40 + waveOffset; y < H; y += 40) {
+    for (let x = 0; x < W; x += 6) {
+      const waveY = y + Math.sin((x + Date.now() / 300) * 0.05) * 4;
+      ctx.fillRect(x, waveY, 4, 1);
+    }
+  }
+
+  // Foam lines
+  ctx.fillStyle = 'rgba(170,238,255,0.15)';
+  for (let i = 0; i < foamLines.length; i++) {
+    const f = foamLines[i];
+    f.y += scrollSpeed * 0.8;
+    if (f.y > H + 10) {
+      f.y = -10;
+      f.x = Math.random() * W;
+      f.len = 30 + Math.random() * 60;
+    }
+    ctx.fillRect(f.x, f.y, f.len, 2);
+  }
+}
+
+// ── Particles ──
+function spawnParticles(x, y) {
+  for (let i = 0; i < 12; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 30 + Math.random() * 20,
+      size: 2 + Math.random() * 4,
+      color: Math.random() > 0.5 ? '#ffffff' : '#aaeeff'
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    ctx.globalAlpha = p.life / 50;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Collision (AABB) ──
+function checkCollision(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ── Game Functions ──
+function startGame() {
+  gameRunning = true;
+  gameOver = false;
+  score = 0;
+  scrollSpeed = 2;
+  spawnInterval = 90;
+  spawnTimer = 0;
+  obstacles = [];
+  particles = [];
+  surfer.x = W / 2;
+  targetX = surfer.x;
+  document.getElementById('game-over-overlay').style.display = 'none';
+}
+
+function endGame() {
+  gameRunning = false;
+  gameOver = true;
+  spawnParticles(surfer.x, surfer.y);
+  document.getElementById('final-score').textContent = 'Score: ' + score;
+  document.getElementById('game-over-overlay').style.display = 'flex';
+
+  if (conn && conn.open) {
+    conn.send(JSON.stringify({ type: 'gameover', score }));
+  }
+}
+
+function restartGame() {
+  startGame();
+}
+
+// ── Init foam ──
+for (let i = 0; i < 15; i++) {
+  foamLines.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    len: 30 + Math.random() * 60
+  });
+}
+
+// ── Game Loop ──
+function gameLoop() {
+  // Draw ocean background
+  drawOcean();
+
+  if (gameRunning) {
+    // Keyboard input
+    if (keys['ArrowLeft']) targetX -= 5;
+    if (keys['ArrowRight']) targetX += 5;
+    targetX = Math.max(20, Math.min(W - 20, targetX));
+
+    // Lerp surfer position
+    surfer.x += (targetX - surfer.x) * 0.15;
+
+    // Increase difficulty
+    score++;
+    if (score % 500 === 0) {
+      scrollSpeed = Math.min(6, scrollSpeed + 0.3);
+      spawnInterval = Math.max(30, spawnInterval - 5);
+    }
+
+    // Spawn obstacles
+    spawnTimer++;
+    if (spawnTimer >= spawnInterval) {
+      spawnTimer = 0;
+      const type = OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+      obstacles.push({
+        x: 20 + Math.random() * (W - 60),
+        y: -40,
+        w: type.w,
+        h: type.h,
+        draw: type.draw
+      });
+    }
+
+    // Update & draw obstacles
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      o.y += scrollSpeed;
+      if (o.y > H + 50) { obstacles.splice(i, 1); continue; }
+      o.draw(o.x, o.y, o.w, o.h);
+
+      // Collision check with tighter hitbox
+      const hitbox = {
+        x: surfer.x - surfer.w / 2 + 4,
+        y: surfer.y - surfer.h / 2 + 6,
+        w: surfer.w - 8,
+        h: surfer.h - 10
+      };
+      if (checkCollision(hitbox, o)) {
+        endGame();
+      }
+    }
+  } else {
+    // Draw obstacles even when not running (game over freeze frame)
+    for (const o of obstacles) {
+      o.draw(o.x, o.y, o.w, o.h);
+    }
+  }
+
+  // Draw surfer
+  drawSurfer(surfer.x, surfer.y);
+
+  // Particles
+  updateParticles();
+
+  // Score display
+  document.getElementById('score-display').textContent = 'SCORE: ' + score;
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
