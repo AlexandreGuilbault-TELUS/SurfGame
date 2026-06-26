@@ -106,19 +106,83 @@ canvas { display: block; image-rendering: pixelated; }
   z-index: 50;
   pointer-events: none;
 }
+#mode-selector {
+  display: none;
+  flex-direction: row;
+  gap: 12px;
+  margin-top: 16px;
+  justify-content: center;
+}
+#mode-selector button {
+  background: rgba(0,0,0,0.85);
+  color: #00e5ff;
+  border: 2px solid #00e5ff;
+  border-radius: 8px;
+  padding: 10px 28px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#mode-selector button:hover {
+  background: rgba(0,229,255,0.15);
+}
+#debug-controls {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+}
+#debug-controls p {
+  color: #88ccdd;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  margin-bottom: 16px;
+}
+#btn-download {
+  background: rgba(0,0,0,0.85);
+  color: #00e5ff;
+  border: 2px solid #00e5ff;
+  border-radius: 8px;
+  padding: 14px 32px;
+  font-family: 'Courier New', monospace;
+  font-size: 18px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+}
+#btn-download:hover {
+  background: rgba(0,229,255,0.15);
+}
+#debug-controls .sub {
+  color: #556;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  margin-top: 12px;
+}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="score-display">SCORE: 0</div>
 <div id="keyboard-hint">Arrow keys to steer • Space to restart</div>
-<div id="version">v2.1 DEBUG</div>
+<div id="version">v2.2</div>
 
 <div id="overlay">
   <div id="qr-container">
     <h2>Scan to Connect Controller</h2>
     <div id="qr-box"></div>
     <p id="status">Initializing...</p>
+    <div id="mode-selector">
+      <button id="btn-play" onclick="selectMode('play')">PLAY</button>
+      <button id="btn-debug" onclick="selectMode('debug')">DEBUG</button>
+    </div>
   </div>
 </div>
 
@@ -126,6 +190,12 @@ canvas { display: block; image-rendering: pixelated; }
   <h1>WIPEOUT!</h1>
   <p id="final-score">Score: 0</p>
   <p class="sub" id="restart-hint">Press SPACE or tap phone to restart</p>
+</div>
+
+<div id="debug-controls">
+  <p id="debug-info">Session stopped</p>
+  <button id="btn-download" onclick="downloadGyroLog()">DOWNLOAD GYRO DATA</button>
+  <p class="sub">Press SPACE to start new session</p>
 </div>
 
 <script>
@@ -168,7 +238,7 @@ let controllerConnected = false;
 let conn = null;
 
 // ── Debug Mode ──
-const DEBUG_MODE = true;
+let DEBUG_MODE = false;
 let gyroLog = [];
 let lastRawGamma = 0;
 let lastRawBeta = 0;
@@ -190,7 +260,11 @@ window.addEventListener('keydown', e => {
   if (e.code === 'Space') {
     if (DEBUG_MODE && gameRunning) {
       gameRunning = false;
-      downloadGyroLog();
+      document.getElementById('debug-info').textContent = 'Session stopped — ' + gyroLog.length + ' entries captured';
+      document.getElementById('debug-controls').style.display = 'flex';
+    } else if (DEBUG_MODE && !gameRunning && !gameOver) {
+      document.getElementById('debug-controls').style.display = 'none';
+      startGame();
     } else if (gameOver) {
       restartGame();
     }
@@ -236,9 +310,8 @@ peer.on('connection', c => {
   c.on('open', () => {
     c.send(JSON.stringify({ type: 'connected' }));
     setTimeout(() => {
-      document.getElementById('overlay').style.display = 'none';
       document.getElementById('keyboard-hint').style.display = 'none';
-      if (!gameRunning && !gameOver) startGame();
+      document.getElementById('mode-selector').style.display = 'flex';
     }, 800);
   });
 
@@ -290,8 +363,7 @@ setTimeout(() => {
 
 window.addEventListener('keydown', e => {
   if (!controllerConnected && !gameRunning && !gameOver && (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-    document.getElementById('overlay').style.display = 'none';
-    startGame();
+    document.getElementById('mode-selector').style.display = 'flex';
   }
 });
 
@@ -496,6 +568,15 @@ function checkCollision(a, b) {
          a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+// ── Mode Selection ──
+function selectMode(mode) {
+  DEBUG_MODE = (mode === 'debug');
+  document.getElementById('version').textContent = 'v2.2' + (DEBUG_MODE ? ' DEBUG' : '');
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('keyboard-hint').style.display = 'none';
+  startGame();
+}
+
 // ── Game Functions ──
 function startGame() {
   gameRunning = true;
@@ -515,6 +596,7 @@ function startGame() {
   gyroForce = 0;
   gyroLog = [];
   document.getElementById('game-over-overlay').style.display = 'none';
+  document.getElementById('debug-controls').style.display = 'none';
 }
 
 function endGame() {
