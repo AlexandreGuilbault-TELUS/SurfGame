@@ -222,10 +222,10 @@ canvas { display: block; image-rendering: pixelated; }
 <canvas id="game"></canvas>
 <div id="score-display">SCORE: 0</div>
 <div id="keyboard-hint">Arrow keys to steer • Space to restart</div>
-<div id="version">v3.1</div>
+<div id="version">v3.2</div>
 
 <div id="game-menu">
-  <h1>Surf Game v3.1</h1>
+  <h1>Surf Game v3.2</h1>
   <div class="menu-buttons">
     <div class="menu-btn" onclick="chooseSurf()">
       <span class="icon">~ ~ ~</span>
@@ -644,7 +644,7 @@ function chooseWakesurf() {
 // ── Mode Selection ──
 function selectMode(mode) {
   DEBUG_MODE = (mode === 'debug');
-  document.getElementById('version').textContent = 'v3.1' + (DEBUG_MODE ? ' DEBUG' : '');
+  document.getElementById('version').textContent = 'v3.2' + (DEBUG_MODE ? ' DEBUG' : '');
   document.getElementById('overlay').style.display = 'none';
   document.getElementById('keyboard-hint').style.display = 'none';
   startGame();
