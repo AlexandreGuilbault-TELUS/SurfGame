@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wave Rider</title>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #061a2e;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+canvas { display: block; }
+#overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+#qr-container {
+  background: rgba(0,0,0,0.88);
+  border: 2px solid rgba(0,229,255,0.6);
+  border-radius: 14px;
+  padding: 28px;
+  text-align: center;
+  pointer-events: auto;
+}
+#qr-container h2 {
+  color: #00e5ff;
+  font-size: 16px;
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 600;
+}
+#qr-container p { color: #88ccdd; font-size: 12px; margin-top: 10px; }
+#qr-box { margin: 0 auto; }
+#status { color: #ffcc00; font-size: 13px; margin-top: 8px; }
+#game-over-overlay {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+  backdrop-filter: blur(3px);
+}
+#game-over-overlay h1 {
+  color: #ff4444;
+  font-size: 40px;
+  font-weight: 800;
+  text-shadow: 0 3px 10px rgba(0,0,0,0.5);
+  margin-bottom: 8px;
+}
+#game-over-overlay p { color: #fff; font-size: 20px; }
+#game-over-overlay .sub { color: #88ccdd; font-size: 13px; margin-top: 6px; }
+#game-over-overlay .stats { color: #aaddee; font-size: 12px; margin-top: 14px; line-height: 1.7; }
+#keyboard-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.25);
+  font-size: 11px;
+  z-index: 5;
+}
+#version {
+  position: fixed;
+  bottom: 4px;
+  right: 8px;
+  color: rgba(255,255,255,0.15);
+  font-size: 10px;
+  z-index: 50;
+  pointer-events: none;
+}
+#back-btn {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  color: rgba(255,255,255,0.3);
+  font-size: 11px;
+  z-index: 50;
+  cursor: pointer;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: inherit;
+}
+#back-btn:hover { color: #00e5ff; border-color: #00e5ff; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="back-btn" onclick="window.location.href='index.html'">&larr; MENU</button>
+<div id="keyboard-hint">Arrow keys to ride &bull; Space to restart</div>
+<div id="version">v3.4</div>
+
+<div id="overlay">
+  <div id="qr-container">
+    <h2>Scan to Connect Controller</h2>
+    <div id="qr-box"></div>
+    <p id="status">Initializing...</p>
+  </div>
+</div>
+
+<div id="game-over-overlay">
+  <h1>WIPEOUT!</h1>
+  <p id="final-score">0</p>
+  <p class="sub" id="restart-hint">Press SPACE or tap phone to restart</p>
+  <div class="stats" id="stats-display"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  CANVAS
+// ═══════════════════════════════════════════
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 400, H = 700;
+canvas.width = W; canvas.height = H;
+
+function fitCanvas() {
+  const s = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width = (W * s) + 'px';
+  canvas.style.height = (H * s) + 'px';
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+// ═══════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════
+const SURFER_Y = 440;
+const DRAG = 0.93;
+const MAX_VX = 7;
+const GYRO_RANGE = 8;
+const DEAD_ZONE = 1.5;
+const GAMMA_BIAS = -1.3;
+
+// ═══════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════
+let state = 'waiting'; // waiting | playing | wipeout | gameover
+let waterTime = 0;
+let scrollY = 0;
+let frameCount = 0;
+
+let surfer = { x: 0, vx: 0, speed: 3, lean: 0, crouch: 0 };
+let score = 0;
+let combo = 1;
+let comboTimer = 0;
+let bestCombo = 1;
+let rideStart = 0;
+let maxSpeed = 0;
+
+// Difficulty
+let difficulty = 0;
+let diffTimer = 0;
+let turbulence = 0;
+let troughShift = 0;
+
+// Gyro
+let lastGamma = 0, lastBeta = 0;
+let prevGamma = 0, prevBeta = 0;
+let sensorTime = 0;
+let inputGamma = 0, inputBeta = 0;
+
+// Pump
+let betaHist = [];
+let pumpCool = 0;
+
+// Fall
+let dangerTimer = 0;
+let wipeoutTimer = 0;
+let wipeoutRot = 0;
+let wipeoutVx = 0, wipeoutVy = 0;
+
+// Effects
+let particles = [];
+let foamTrail = [];
+let floatTexts = [];
+
+// Connection
+let controllerConnected = false;
+let conn = null;
+
+// Keyboard
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' && state === 'gameover') restartGame();
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// ═══════════════════════════════════════════
+//  PEERJS
+// ═══════════════════════════════════════════
+const peer = new Peer(null, {
+  config: { iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]}
+});
+
+peer.on('open', id => {
+  document.getElementById('status').textContent = 'Waiting for controller...';
+  const base = window.location.href.replace(/\/[^/]*$/, '/');
+  const url = base + 'controller.html?id=' + id;
+  document.getElementById('qr-box').innerHTML = '';
+  new QRCode(document.getElementById('qr-box'), {
+    text: url, width: 200, height: 200,
+    colorDark: '#00e5ff', colorLight: '#0a1628'
+  });
+});
+
+peer.on('error', err => {
+  document.getElementById('status').textContent = 'Error: ' + err.type;
+});
+
+peer.on('connection', c => {
+  if (conn) { c.close(); return; }
+  conn = c;
+  controllerConnected = true;
+  document.getElementById('status').textContent = 'Connected!';
+
+  c.on('open', () => {
+    c.send(JSON.stringify({ type: 'connected' }));
+    setTimeout(() => {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('keyboard-hint').style.display = 'none';
+      startGame();
+    }, 600);
+  });
+
+  c.on('data', raw => {
+    const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (msg.type === 'gyro') {
+      prevGamma = lastGamma;
+      prevBeta = lastBeta;
+      lastGamma = msg.gamma;
+      lastBeta = msg.beta;
+      sensorTime = performance.now();
+    } else if (msg.type === 'restart') {
+      if (state === 'gameover') restartGame();
+    }
+  });
+
+  c.on('close', () => {
+    conn = null;
+    controllerConnected = false;
+    document.getElementById('overlay').style.display = 'flex';
+    document.getElementById('status').textContent = 'Disconnected. Scan again.';
+  });
+});
+
+// Keyboard fallback
+setTimeout(() => {
+  if (!controllerConnected) document.getElementById('overlay').style.opacity = '0.5';
+}, 3000);
+window.addEventListener('keydown', e => {
+  if (!controllerConnected && state === 'waiting' &&
+      ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) {
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('keyboard-hint').style.display = 'none';
+    startGame();
+  }
+});
+
+// ═══════════════════════════════════════════
+//  GAME LIFECYCLE
+// ═══════════════════════════════════════════
+function startGame() {
+  state = 'playing';
+  score = 0; combo = 1; comboTimer = 0; bestCombo = 1;
+  difficulty = 0; diffTimer = 0; turbulence = 0; troughShift = 0;
+  particles = []; foamTrail = []; floatTexts = [];
+  betaHist = []; pumpCool = 0; dangerTimer = 0;
+  frameCount = 0; maxSpeed = 0;
+
+  const trX = getTroughX(SURFER_Y);
+  const liX = getLipX(SURFER_Y);
+  surfer = { x: (trX + liX) * 0.5, vx: 0, speed: 3, lean: 0, crouch: 0 };
+  rideStart = performance.now();
+  document.getElementById('game-over-overlay').style.display = 'none';
+}
+
+function triggerWipeout(reason) {
+  if (state !== 'playing') return;
+  state = 'wipeout';
+  wipeoutTimer = 50;
+  wipeoutRot = 0;
+  wipeoutVx = surfer.vx * 0.5;
+  wipeoutVy = 2;
+  // Big splash
+  for (let i = 0; i < 25; i++) {
+    spawnParticle(surfer.x, SURFER_Y, (Math.random()-0.5)*7, (Math.random()-0.5)*7, 2);
+  }
+}
+
+function showGameOver() {
+  state = 'gameover';
+  const time = ((performance.now() - rideStart) / 1000).toFixed(1);
+  document.getElementById('final-score').textContent = 'Score: ' + Math.floor(score);
+  document.getElementById('stats-display').innerHTML =
+    'Ride: ' + time + 's &bull; Top speed: ' + maxSpeed.toFixed(1) +
+    '<br>Best combo: x' + bestCombo;
+  document.getElementById('game-over-overlay').style.display = 'flex';
+  if (conn && conn.open) conn.send(JSON.stringify({ type: 'gameover', score: Math.floor(score) }));
+}
+
+function restartGame() { startGame(); }
+
+// ═══════════════════════════════════════════
+//  WAVE GEOMETRY
+// ═══════════════════════════════════════════
+function getTroughX(y) {
+  const t = y / H;
+  // Upper screen (far): trough at ~50% of W
+  // Lower screen (close): trough at ~22% of W
+  // Organic S-curve
+  const base = W * (0.50 - 0.28 * t) + troughShift;
+  const curve = Math.sin(t * Math.PI) * 10;
+  const turb = turbulence * Math.sin(y * 0.04 + waterTime * 2.5) * 4;
+  return base + curve + turb;
+}
+
+function getLipX(y) {
+  const t = y / H;
+  // Lip stays on the right side
+  const base = W * (0.83 + 0.07 * t);
+  const curve = Math.sin(t * Math.PI * 0.8) * 6;
+  const turb = turbulence * Math.sin(y * 0.05 + waterTime * 2) * 3;
+  return base - curve + turb;
+}
+
+function getFacePos(x, y) {
+  // 0 = at trough, 1 = at lip
+  const tr = getTroughX(y);
+  const li = getLipX(y);
+  if (li <= tr) return 0.5;
+  return Math.max(0, Math.min(1, (x - tr) / (li - tr)));
+}
+
+function isOnFace(x, y) {
+  return x >= getTroughX(y) - 20 && x <= getLipX(y) + 5;
+}
+
+// ═══════════════════════════════════════════
+//  INPUT
+// ═══════════════════════════════════════════
+function processInput() {
+  let g = 0, b = 0;
+
+  if (controllerConnected) {
+    // Interpolate for 60fps from ~30Hz sensor
+    const elapsed = performance.now() - sensorTime;
+    const t = Math.min(1.5, elapsed / 33);
+    g = lastGamma + (lastGamma - prevGamma) * (t - 1) * 0.5;
+    b = lastBeta + (lastBeta - prevBeta) * (t - 1) * 0.5;
+    g -= GAMMA_BIAS;
+  } else {
+    if (keys['ArrowLeft']) g = -5;
+    if (keys['ArrowRight']) g = 5;
+    if (keys['ArrowUp']) b = -4;
+    if (keys['ArrowDown']) b = 4;
+  }
+
+  // Dead zone + clamp
+  if (Math.abs(g) < DEAD_ZONE) g = 0;
+  else g -= Math.sign(g) * DEAD_ZONE;
+  g = Math.max(-GYRO_RANGE, Math.min(GYRO_RANGE, g));
+
+  if (Math.abs(b) < 1) b = 0;
+  else b -= Math.sign(b) * 1;
+  b = Math.max(-GYRO_RANGE, Math.min(GYRO_RANGE, b));
+
+  // Normalize to -1..1
+  inputGamma = g / (GYRO_RANGE - DEAD_ZONE);
+  inputBeta = b / (GYRO_RANGE - 1);
+
+  // Fall detection: sudden violent movement
+  if (controllerConnected) {
+    const gDelta = Math.abs(lastGamma - prevGamma);
+    const bDelta = Math.abs(lastBeta - prevBeta);
+    if (gDelta > 18 || bDelta > 22) triggerWipeout('fall');
+    if (Math.abs(lastGamma) > 35 || Math.abs(lastBeta) > 40) triggerWipeout('fall');
+  }
+}
+
+// ═══════════════════════════════════════════
+//  PUMP DETECTION
+// ═══════════════════════════════════════════
+function detectPump() {
+  const now = performance.now();
+  betaHist.push({ t: now, v: inputBeta });
+  while (betaHist.length > 0 && now - betaHist[0].t > 2000) betaHist.shift();
+  if (betaHist.length < 8 || pumpCool > 0) {
+    pumpCool = Math.max(0, pumpCool - 1);
+    return false;
+  }
+
+  let crossings = 0;
+  let lastSign = Math.sign(betaHist[0].v) || 1;
+  for (let i = 1; i < betaHist.length; i++) {
+    const s = Math.sign(betaHist[i].v);
+    if (s !== 0 && s !== lastSign) { crossings++; lastSign = s; }
+  }
+
+  // 3-6 crossings in 2s = valid pump rhythm
+  if (crossings >= 3 && crossings <= 6) {
+    const vals = betaHist.map(h => h.v);
+    const amp = Math.max(...vals) - Math.min(...vals);
+    if (amp > 0.3) {
+      pumpCool = 20;
+      return true;
+    }
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════
+//  PHYSICS
+// ═══════════════════════════════════════════
+function updatePhysics() {
+  processInput();
+
+  const trX = getTroughX(SURFER_Y);
+  const liX = getLipX(SURFER_Y);
+  const faceW = liX - trX;
+
+  // --- Lateral movement (gamma) ---
+  surfer.vx += inputGamma * 0.38;
+  surfer.vx *= DRAG;
+  surfer.vx = Math.max(-MAX_VX, Math.min(MAX_VX, surfer.vx));
+
+  // Edge springs
+  if (surfer.x < trX + 10) surfer.vx += (trX + 10 - surfer.x) * 0.08;
+  if (surfer.x > liX - 10) surfer.vx -= (surfer.x - (liX - 10)) * 0.08;
+
+  surfer.x += surfer.vx;
+
+  // --- Speed from face movement ---
+  const facePos = getFacePos(surfer.x, SURFER_Y);
+
+  // Dropping (moving left/toward trough from high on face) = gain speed
+  if (surfer.vx < -0.5 && facePos > 0.25) {
+    surfer.speed += Math.abs(surfer.vx) * facePos * 0.12;
+  }
+  // Climbing (moving right/toward lip) = costs speed
+  if (surfer.vx > 0.5 && facePos > 0.3) {
+    surfer.speed -= Math.abs(surfer.vx) * facePos * 0.04;
+  }
+
+  // Pumping
+  if (detectPump()) {
+    surfer.speed += 0.6;
+    addFloatText('+PUMP', surfer.x, SURFER_Y - 50, '#44ffaa');
+    addScore(20);
+  }
+
+  // Speed decay
+  surfer.speed *= 0.9985;
+  surfer.speed = Math.max(0.5, Math.min(14, surfer.speed));
+  if (surfer.speed > maxSpeed) maxSpeed = surfer.speed;
+
+  // Scroll
+  scrollY += surfer.speed * 1.8;
+
+  // --- Carve detection ---
+  if (Math.abs(surfer.vx) > 3.5) {
+    addScore(3);
+    // Spray
+    const dir = -Math.sign(surfer.vx);
+    for (let i = 0; i < 4; i++) {
+      spawnParticle(surfer.x + dir * 10, SURFER_Y + 18,
+        dir * (1 + Math.random() * 3), -(0.5 + Math.random() * 2), 1.2);
+    }
+  }
+
+  // --- Scoring ---
+  // Base points for riding
+  addScore(0.5 + surfer.speed * 0.15);
+
+  // Sweet spot (pocket of the wave, 35-65% of face)
+  if (facePos > 0.35 && facePos < 0.65) {
+    addScore(1.5);
+    comboTimer = performance.now();
+  }
+
+  // Barrel zone (>80% of face, near lip — risky but rewarding)
+  if (facePos > 0.80) {
+    addScore(4);
+    comboTimer = performance.now();
+    if (combo < 2) { combo = 2; if (combo > bestCombo) bestCombo = combo; }
+  }
+
+  // Combo decay
+  if (performance.now() - comboTimer > 2500 && combo > 1) {
+    combo = Math.max(1, combo - 1);
+  }
+
+  // --- Danger zones ---
+  if (surfer.x > liX + 5) {
+    // Over the lip — game over
+    triggerWipeout('over_falls');
+    return;
+  }
+  if (surfer.x < trX - 40) {
+    dangerTimer++;
+    if (dangerTimer > 60) { triggerWipeout('off_wave'); return; }
+  } else {
+    dangerTimer = Math.max(0, dangerTimer - 2);
+  }
+
+  // Speed too low
+  if (surfer.speed < 1) {
+    dangerTimer += 0.5;
+    if (dangerTimer > 90) { triggerWipeout('stall'); return; }
+  }
+
+  // --- Visual state ---
+  surfer.lean = surfer.vx * 0.04;
+  surfer.crouch = Math.min(1, Math.abs(inputBeta) * 0.6 + (pumpCool > 0 ? 0.3 : 0));
+
+  // --- Difficulty ---
+  diffTimer++;
+  if (diffTimer % 1800 === 0) {
+    difficulty++;
+    troughShift += 10;
+    turbulence = Math.min(1.5, turbulence + 0.2);
+  }
+
+  // --- Foam trail ---
+  foamTrail.push({ x: surfer.x, y: SURFER_Y + 18, life: 70 });
+  if (foamTrail.length > 80) foamTrail.shift();
+
+  // Board spray
+  if (Math.abs(surfer.vx) > 1.5) {
+    const intensity = Math.abs(surfer.vx) / MAX_VX;
+    if (Math.random() < intensity) {
+      const dir = -Math.sign(surfer.vx);
+      spawnParticle(surfer.x + dir * 6, SURFER_Y + 16,
+        dir * (0.5 + Math.random() * 2 * intensity),
+        -(0.3 + Math.random() * 1.5 * intensity), 0.8 + intensity);
+    }
+  }
+}
+
+function updateWipeout() {
+  wipeoutTimer--;
+  wipeoutRot += 0.18;
+  surfer.x += wipeoutVx;
+  wipeoutVy += 0.12;
+  if (wipeoutTimer % 6 === 0) {
+    for (let i = 0; i < 3; i++) {
+      spawnParticle(surfer.x, SURFER_Y + wipeoutVy * 3,
+        (Math.random()-0.5)*4, (Math.random()-0.5)*4, 1.5);
+    }
+  }
+  if (wipeoutTimer <= 0) showGameOver();
+}
+
+function addScore(pts) { score += pts * combo; }
+
+function addFloatText(text, x, y, color) {
+  floatTexts.push({ text, x, y, life: 50, color: color || '#fff' });
+}
+
+// ═══════════════════════════════════════════
+//  PARTICLES
+// ═══════════════════════════════════════════
+function spawnParticle(x, y, vx, vy, size) {
+  particles.push({ x, y, vx, vy, size: size + Math.random(), life: 35 + Math.random() * 20 });
+}
+
+function updateEffects() {
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy; p.vy += 0.06; p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  if (particles.length > 150) particles.splice(0, particles.length - 150);
+
+  // Foam trail
+  for (let i = foamTrail.length - 1; i >= 0; i--) {
+    foamTrail[i].y += surfer.speed * 0.4;
+    foamTrail[i].life--;
+    if (foamTrail[i].life <= 0 || foamTrail[i].y > H + 10) foamTrail.splice(i, 1);
+  }
+
+  // Float texts
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    floatTexts[i].y -= 0.8; floatTexts[i].life--;
+    if (floatTexts[i].life <= 0) floatTexts.splice(i, 1);
+  }
+}
+
+// ═══════════════════════════════════════════
+//  RENDERING: SKY & OCEAN
+// ═══════════════════════════════════════════
+function drawSky() {
+  const g = ctx.createLinearGradient(0, 0, 0, 50);
+  g.addColorStop(0, '#78B8D8');
+  g.addColorStop(0.6, '#5A9AB8');
+  g.addColorStop(1, '#3A7A98');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, 50);
+
+  // Horizon blend
+  const hg = ctx.createLinearGradient(0, 40, 0, 80);
+  hg.addColorStop(0, 'rgba(58,122,152,0.9)');
+  hg.addColorStop(1, 'rgba(11,61,91,0)');
+  ctx.fillStyle = hg;
+  ctx.fillRect(0, 40, W, 40);
+}
+
+function drawFlatOcean() {
+  // Deep water base (left side, outside the wave)
+  const og = ctx.createLinearGradient(0, 50, 0, H);
+  og.addColorStop(0, '#0B3D5B');
+  og.addColorStop(0.5, '#0E5578');
+  og.addColorStop(1, '#082840');
+  ctx.fillStyle = og;
+  ctx.fillRect(0, 50, W, H - 50);
+
+  // Ripple lines scrolling downward
+  const scroll = (scrollY * 0.6) % 22;
+  ctx.strokeStyle = 'rgba(80,160,200,0.07)';
+  ctx.lineWidth = 1;
+  for (let y = 50 + scroll; y < H; y += 22) {
+    const trX = getTroughX(y);
+    if (trX < 10) continue;
+    ctx.beginPath();
+    for (let x = 5; x < trX - 10; x += 16) {
+      const ry = y + Math.sin((x + waterTime * 50) * 0.04) * 2.5;
+      if (x === 5) ctx.moveTo(x, ry);
+      else ctx.lineTo(x, ry);
+    }
+    ctx.stroke();
+  }
+
+  // Sun dapple on flat water
+  ctx.fillStyle = 'rgba(100,190,220,0.04)';
+  for (let i = 0; i < 6; i++) {
+    const dx = 10 + (i * 31) % 100;
+    const dy = 100 + ((i * 97 + Math.floor(scrollY * 0.3)) % (H - 150));
+    const trX = getTroughX(dy);
+    if (dx > trX - 15) continue;
+    const sz = 8 + Math.sin(waterTime * 2 + i * 1.7) * 4;
+    ctx.beginPath();
+    ctx.ellipse(dx, dy, sz, sz * 0.4, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  RENDERING: WAVE
+// ═══════════════════════════════════════════
+function drawWaveFace() {
+  const yStart = 60;
+  const yEnd = H;
+
+  // Clip to wave face shape
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(getTroughX(yStart), yStart);
+  for (let y = yStart; y <= yEnd; y += 3) ctx.lineTo(getTroughX(y), y);
+  for (let y = yEnd; y >= yStart; y -= 3) ctx.lineTo(getLipX(y), y);
+  ctx.closePath();
+  ctx.clip();
+
+  // Horizontal gradient: dark trough → bright face → luminous near lip
+  const fg = ctx.createLinearGradient(W * 0.15, 0, W * 0.85, 0);
+  fg.addColorStop(0, '#0A4D6E');
+  fg.addColorStop(0.25, '#127090');
+  fg.addColorStop(0.5, '#1C98B5');
+  fg.addColorStop(0.7, '#35C0D8');
+  fg.addColorStop(0.9, '#55DDE8');
+  fg.addColorStop(1, '#75F0F5');
+  ctx.fillStyle = fg;
+  ctx.fillRect(0, yStart, W, yEnd - yStart);
+
+  // Depth shading: darker toward top (further away)
+  const dg = ctx.createLinearGradient(0, yStart, 0, yEnd);
+  dg.addColorStop(0, 'rgba(5,25,45,0.35)');
+  dg.addColorStop(0.3, 'rgba(5,25,45,0.12)');
+  dg.addColorStop(0.7, 'rgba(5,25,45,0.05)');
+  dg.addColorStop(1, 'rgba(5,25,45,0.15)');
+  ctx.fillStyle = dg;
+  ctx.fillRect(0, yStart, W, yEnd - yStart);
+
+  // Flow contour lines (scroll downward with speed)
+  const flowScroll = (scrollY * 0.9) % 24;
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'round';
+  for (let y = yStart + flowScroll; y < yEnd; y += 24) {
+    const left = getTroughX(y);
+    const right = getLipX(y);
+    ctx.strokeStyle = 'rgba(130,220,240,0.10)';
+    ctx.beginPath();
+    ctx.moveTo(left + 5, y);
+    for (let sx = left + 5; sx < right - 5; sx += 16) {
+      const w1 = Math.sin((sx + scrollY * 0.4) * 0.05) * 2.5;
+      const w2 = Math.cos((sx + scrollY * 0.3) * 0.06) * 1.5;
+      ctx.bezierCurveTo(sx + 5, y + w1, sx + 11, y + w2, sx + 16, y);
+    }
+    ctx.stroke();
+  }
+
+  // Caustic light spots
+  const ct = waterTime * 1.5;
+  for (let i = 0; i < 10; i++) {
+    const cy = yStart + 30 + (i * 63) % (yEnd - yStart - 50);
+    const left = getTroughX(cy);
+    const right = getLipX(cy);
+    const cx = left + (right - left) * (0.3 + (i * 0.13) % 0.4);
+    const alpha = 0.05 + Math.sin(ct + i * 2.3) * 0.035;
+    if (alpha <= 0) continue;
+    ctx.fillStyle = `rgba(160,240,255,${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + Math.sin(ct + i) * 3, 9 + Math.sin(ct + i * 0.7) * 3, 4, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawWaveWall() {
+  // The wall is the back/inside of the wave, to the right of the lip
+  const yStart = 50;
+  const yEnd = H;
+
+  ctx.save();
+  ctx.beginPath();
+  for (let y = yStart; y <= yEnd; y += 3) ctx.lineTo(getLipX(y), y);
+  ctx.lineTo(W, yEnd);
+  ctx.lineTo(W, yStart);
+  ctx.closePath();
+
+  // Dark interior
+  const wg = ctx.createLinearGradient(W * 0.7, 0, W, 0);
+  wg.addColorStop(0, '#0A3A55');
+  wg.addColorStop(0.4, '#062A3E');
+  wg.addColorStop(1, '#031520');
+  ctx.fillStyle = wg;
+  ctx.fill();
+
+  // Vertical flow streaks (water going up and over)
+  const flowScroll = (scrollY * 0.5) % 20;
+  for (let y = yStart + flowScroll; y < yEnd; y += 20) {
+    const lipX = getLipX(y);
+    const sx = lipX + 8 + Math.sin(y * 0.06) * 6;
+    if (sx >= W - 3) continue;
+    ctx.strokeStyle = `rgba(60,130,160,${0.05 + Math.sin(y * 0.03 + waterTime) * 0.02})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(sx, y);
+    ctx.bezierCurveTo(sx + 2, y - 8, sx - 1, y - 16, sx + 1, y - 24);
+    ctx.stroke();
+  }
+
+  // Light filtering through upper wave
+  for (let y = yStart; y < yStart + (yEnd - yStart) * 0.35; y += 18) {
+    const lipX = getLipX(y);
+    const cx = lipX + 10 + Math.sin(y * 0.08 + waterTime * 1.5) * 8;
+    if (cx >= W - 5) continue;
+    const alpha = 0.04 + Math.sin(waterTime + y * 0.06) * 0.025;
+    if (alpha <= 0) continue;
+    ctx.fillStyle = `rgba(120,220,240,${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(cx, y, 8 + Math.sin(waterTime + y) * 3, 4, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawCurl() {
+  // Barrel section: the lip curling forward over the face
+  // Only visible in the upper portion of the screen
+  const curlEndY = H * 0.30;
+
+  ctx.save();
+
+  // Curl shape: extends leftward from the lip
+  ctx.beginPath();
+  for (let y = 55; y <= curlEndY; y += 2) {
+    const lipX = getLipX(y);
+    const progress = (y - 55) / (curlEndY - 55);
+    // Curl extends more at the top (far away), less as it gets closer
+    const extent = (1 - progress * progress) * 65;
+    const curlX = lipX - extent;
+    ctx.lineTo(curlX, y);
+  }
+  // Close back along lip
+  for (let y = curlEndY; y >= 55; y -= 2) {
+    ctx.lineTo(getLipX(y), y);
+  }
+  ctx.closePath();
+
+  // Translucent barrel interior
+  const cg = ctx.createLinearGradient(W * 0.4, 0, W * 0.85, 0);
+  cg.addColorStop(0, 'rgba(8,35,50,0.7)');
+  cg.addColorStop(0.5, 'rgba(15,70,95,0.5)');
+  cg.addColorStop(1, 'rgba(40,150,180,0.3)');
+  ctx.fillStyle = cg;
+  ctx.fill();
+
+  // Curl lip edge with foam
+  ctx.strokeStyle = 'rgba(200,245,255,0.5)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let y = 58; y <= curlEndY; y += 3) {
+    const lipX = getLipX(y);
+    const progress = (y - 58) / (curlEndY - 58);
+    const extent = (1 - progress * progress) * 65;
+    const curlX = lipX - extent;
+    const jitter = Math.sin(y * 0.15 + waterTime * 4) * 2;
+    if (y === 58) ctx.moveTo(curlX + jitter, y);
+    else ctx.lineTo(curlX + jitter, y);
+  }
+  ctx.stroke();
+
+  // Foam drips from curl
+  ctx.fillStyle = 'rgba(220,250,255,0.25)';
+  for (let y = 65; y < curlEndY - 10; y += 12) {
+    const lipX = getLipX(y);
+    const progress = (y - 55) / (curlEndY - 55);
+    const extent = (1 - progress * progress) * 65;
+    const cx = lipX - extent + 5 + Math.sin(y * 0.2 + waterTime * 3) * 4;
+    ctx.beginPath();
+    ctx.arc(cx, y + Math.sin(waterTime * 2 + y * 0.1) * 3, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawLipFoam() {
+  const ft = waterTime * 2.5;
+
+  // Broad glow
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  let started = false;
+  for (let y = 60; y < H - 20; y += 5) {
+    const rx = getLipX(y);
+    const wobble = Math.sin(y * 0.08 + ft) * 2.5 + Math.cos(y * 0.12 + ft * 1.2) * 1.5;
+    if (!started) { ctx.moveTo(rx + wobble, y); started = true; }
+    else ctx.lineTo(rx + wobble, y);
+  }
+  ctx.stroke();
+
+  // Bright core
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  started = false;
+  for (let y = 60; y < H - 20; y += 4) {
+    const rx = getLipX(y);
+    const wobble = Math.sin(y * 0.08 + ft) * 1.8 + Math.cos(y * 0.14 + ft * 1.1) * 1;
+    if (!started) { ctx.moveTo(rx + wobble, y); started = true; }
+    else ctx.lineTo(rx + wobble, y);
+  }
+  ctx.stroke();
+
+  // Foam dots
+  for (let y = 65; y < H - 25; y += 6) {
+    const rx = getLipX(y);
+    const scatter = Math.sin(y * 0.18 + ft * 0.7) * 5;
+    const bx = rx + scatter - 3;
+    const alpha = 0.2 + Math.sin(y * 0.25 + ft * 1.3) * 0.12;
+    const r = 1.2 + Math.sin(y * 0.15 + ft) * 0.6;
+    ctx.fillStyle = `rgba(255,255,255,${Math.max(0.08, alpha)})`;
+    ctx.beginPath();
+    ctx.arc(bx, y + Math.cos(y * 0.12 + ft) * 1.5, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Spindrift off lip
+  for (let y = 70; y < H - 40; y += 14) {
+    const rx = getLipX(y);
+    const drift = Math.sin(y * 0.09 + ft * 1.3) * 3;
+    for (let d = 0; d < 2; d++) {
+      const dx = rx + 6 + d * 5 + drift;
+      if (dx >= W - 3) continue;
+      ctx.fillStyle = `rgba(255,255,255,${0.08 + Math.sin(ft + d + y * 0.1) * 0.04})`;
+      ctx.beginPath();
+      ctx.arc(dx, y + Math.cos(ft + d + y * 0.05) * 3, 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawSweetSpot() {
+  if (state !== 'playing') return;
+  const trX = getTroughX(SURFER_Y);
+  const liX = getLipX(SURFER_Y);
+  const center = trX + (liX - trX) * 0.50;
+  const radius = (liX - trX) * 0.15;
+  const pulse = 0.08 + Math.sin(waterTime * 2.5) * 0.04;
+
+  const sg = ctx.createRadialGradient(center, SURFER_Y, 0, center, SURFER_Y, radius + 15);
+  sg.addColorStop(0, `rgba(0,255,200,${pulse})`);
+  sg.addColorStop(1, 'rgba(0,255,200,0)');
+  ctx.fillStyle = sg;
+  ctx.fillRect(center - radius - 15, SURFER_Y - 50, (radius + 15) * 2, 100);
+}
+
+// ═══════════════════════════════════════════
+//  RENDERING: TROUGH LINE
+// ═══════════════════════════════════════════
+function drawTroughLine() {
+  // A subtle shadow/foam line where flat water meets the face
+  ctx.strokeStyle = 'rgba(0,20,40,0.25)';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  let started = false;
+  for (let y = 60; y < H; y += 3) {
+    const tx = getTroughX(y);
+    const jitter = Math.sin(y * 0.07 + waterTime * 3) * 1.5;
+    if (!started) { ctx.moveTo(tx + jitter, y); started = true; }
+    else ctx.lineTo(tx + jitter, y);
+  }
+  ctx.stroke();
+
+  // Lighter foam side
+  ctx.strokeStyle = 'rgba(150,220,240,0.12)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  started = false;
+  for (let y = 62; y < H; y += 4) {
+    const tx = getTroughX(y) - 3;
+    const jitter = Math.sin(y * 0.06 + waterTime * 2.8) * 2;
+    if (!started) { ctx.moveTo(tx + jitter, y); started = true; }
+    else ctx.lineTo(tx + jitter, y);
+  }
+  ctx.stroke();
+}
+
+// ═══════════════════════════════════════════
+//  RENDERING: EFFECTS
+// ═══════════════════════════════════════════
+function drawEffects() {
+  // Foam trail
+  for (const f of foamTrail) {
+    const alpha = (f.life / 70) * 0.25;
+    ctx.fillStyle = `rgba(180,240,255,${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(f.x, f.y, 2.5 + (1 - f.life / 70) * 2, 1.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Spray particles
+  for (const p of particles) {
+    const alpha = (p.life / 55) * 0.7;
+    ctx.fillStyle = `rgba(210,248,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Float texts
+  for (const ft of floatTexts) {
+    ctx.globalAlpha = ft.life / 50;
+    ctx.fillStyle = ft.color;
+    ctx.font = 'bold 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+// ═══════════════════════════════════════════
+//  RENDERING: SURFER (THIRD-PERSON BEHIND)
+// ═══════════════════════════════════════════
+function drawSurfer() {
+  const x = surfer.x;
+  const y = SURFER_Y;
+  const lean = surfer.lean;
+  const crouch = surfer.crouch;
+  const isWipeout = state === 'wipeout';
+
+  ctx.save();
+  ctx.translate(x, y);
+  if (isWipeout) {
+    ctx.rotate(wipeoutRot);
+    ctx.translate(0, wipeoutVy * (50 - wipeoutTimer) * 0.3);
+  } else {
+    ctx.rotate(lean);
+  }
+
+  // ── BOARD (foreshortened, seen from behind) ──
+  const boardY = 16 - crouch * 3;
+
+  // Board shadow
+  ctx.fillStyle = 'rgba(0,15,30,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(1, boardY + 3, 22, 5, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Board body
+  const bg = ctx.createLinearGradient(-20, boardY, 20, boardY);
+  bg.addColorStop(0, '#E8E6DA');
+  bg.addColorStop(0.5, '#F5F3E8');
+  bg.addColorStop(1, '#E0DED2');
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.ellipse(0, boardY, 21, 5.5, 0.03, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Board outline
+  ctx.strokeStyle = '#C8C6BA';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.ellipse(0, boardY, 21, 5.5, 0.03, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Stringer
+  ctx.strokeStyle = '#B8A870';
+  ctx.lineWidth = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(0, boardY - 5);
+  ctx.lineTo(0, boardY + 5);
+  ctx.stroke();
+
+  // Traction pads
+  ctx.fillStyle = 'rgba(30,30,30,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(-7, boardY, 6, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(30,30,30,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(7, boardY + 0.5, 5.5, 2.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Fins (thruster setup)
+  ctx.fillStyle = '#3a3a3a';
+  ctx.beginPath();
+  ctx.ellipse(-8, boardY + 5, 2.5, 1.5, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(8, boardY + 5, 2.5, 1.5, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(0, boardY + 6, 2, 1.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── LEGS ──
+  const kneeY = 5 + crouch * 4;
+  const footY = 13 - crouch * 2;
+  const leanShift = lean * 15;
+
+  // Back leg (right foot, closer to camera)
+  ctx.strokeStyle = '#E0B070';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(4 + leanShift * 0.3, 1);
+  ctx.quadraticCurveTo(6 + crouch * 0.5 + leanShift * 0.2, kneeY, 5, footY);
+  ctx.stroke();
+
+  // Front leg (left foot, further from camera)
+  ctx.strokeStyle = '#C89858';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(-3 + leanShift * 0.3, 1);
+  ctx.quadraticCurveTo(-5 - crouch * 0.5 + leanShift * 0.2, kneeY, -5, footY);
+  ctx.stroke();
+
+  // ── BOARD SHORTS ──
+  ctx.fillStyle = '#CC3520';
+  ctx.beginPath();
+  ctx.moveTo(-7 + leanShift * 0.2, -3);
+  ctx.quadraticCurveTo(-9, 0, -7, 4);
+  ctx.lineTo(9, 4);
+  ctx.quadraticCurveTo(11, 0, 9 + leanShift * 0.2, -3);
+  ctx.closePath();
+  ctx.fill();
+
+  // ── TORSO (wetsuit back) ──
+  const torsoH = 13 - crouch * 2;
+  ctx.fillStyle = '#252528';
+  ctx.beginPath();
+  ctx.moveTo(-10 + leanShift * 0.4, -torsoH);
+  ctx.lineTo(10 + leanShift * 0.4, -torsoH);
+  ctx.quadraticCurveTo(11, -torsoH * 0.5, 9, -3);
+  ctx.lineTo(-9, -3);
+  ctx.quadraticCurveTo(-11, -torsoH * 0.5, -10 + leanShift * 0.4, -torsoH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Back panel
+  ctx.fillStyle = '#2E2E32';
+  ctx.beginPath();
+  ctx.moveTo(-5 + leanShift * 0.3, -torsoH + 2);
+  ctx.lineTo(5 + leanShift * 0.3, -torsoH + 2);
+  ctx.lineTo(4, -4);
+  ctx.lineTo(-4, -4);
+  ctx.closePath();
+  ctx.fill();
+
+  // Spine seam
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(leanShift * 0.3, -torsoH + 1);
+  ctx.lineTo(leanShift * 0.2, -4);
+  ctx.stroke();
+
+  // ── ARMS ──
+  const armLen = 13;
+  const shoulderY = -torsoH + 2;
+  const armWave = Math.sin(waterTime * 1.5) * 1.5;
+
+  // Right arm (wave side) — lower/forward
+  ctx.strokeStyle = '#E0B070';
+  ctx.lineWidth = 4.5;
+  ctx.lineCap = 'round';
+  const rArmEndX = 10 + armLen * 0.9 + lean * 20;
+  const rArmEndY = shoulderY + 4 + armWave - lean * 8;
+  ctx.beginPath();
+  ctx.moveTo(10 + leanShift * 0.4, shoulderY);
+  ctx.quadraticCurveTo(12 + lean * 8, shoulderY + 2, rArmEndX, rArmEndY);
+  ctx.stroke();
+  // Hand
+  ctx.fillStyle = '#E0B070';
+  ctx.beginPath();
+  ctx.arc(rArmEndX, rArmEndY, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Left arm (ocean side) — higher/back
+  ctx.strokeStyle = '#C89858';
+  ctx.lineWidth = 4;
+  const lArmEndX = -10 - armLen * 0.85 + lean * 15;
+  const lArmEndY = shoulderY + 2 - armWave + lean * 5;
+  ctx.beginPath();
+  ctx.moveTo(-10 + leanShift * 0.4, shoulderY);
+  ctx.quadraticCurveTo(-12 + lean * 6, shoulderY + 1, lArmEndX, lArmEndY);
+  ctx.stroke();
+  ctx.fillStyle = '#C89858';
+  ctx.beginPath();
+  ctx.arc(lArmEndX, lArmEndY, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── NECK ──
+  ctx.fillStyle = '#E0B070';
+  ctx.beginPath();
+  ctx.ellipse(leanShift * 0.3, -torsoH - 2, 3.5, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── HEAD (back of head, slightly turned toward wave) ──
+  const headX = leanShift * 0.5 + 1; // slightly turned right (toward wave)
+  const headY = -torsoH - 9;
+
+  // Head shape
+  ctx.fillStyle = '#E0B070';
+  ctx.beginPath();
+  ctx.ellipse(headX, headY, 6.5, 7.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ear (right side visible)
+  ctx.fillStyle = '#C89858';
+  ctx.beginPath();
+  ctx.ellipse(headX + 6, headY + 1, 2, 2.5, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair (back of head)
+  ctx.fillStyle = '#4A3020';
+  ctx.beginPath();
+  ctx.ellipse(headX - 0.5, headY - 2, 6.5, 6, 0, Math.PI * 0.9, Math.PI * 2.1);
+  ctx.fill();
+  // Top hair
+  ctx.beginPath();
+  ctx.ellipse(headX, headY - 5, 5, 4, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  // Side hair
+  ctx.beginPath();
+  ctx.ellipse(headX - 4, headY - 1, 3, 4, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  // Highlights
+  ctx.fillStyle = '#6B4830';
+  ctx.beginPath();
+  ctx.ellipse(headX + 1, headY - 6, 3, 2.5, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════
+//  RENDERING: HUD
+// ═══════════════════════════════════════════
+function drawHUD() {
+  // Score
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur = 6;
+  ctx.fillText(Math.floor(score), 16, 32);
+
+  // Combo
+  if (combo > 1) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillText('x' + combo, 16, 50);
+  }
+
+  // Speed bar (thin vertical bar on left edge)
+  const barH = 120;
+  const barY = H - barH - 30;
+  const fill = Math.min(1, surfer.speed / 12);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(8, barY, 4, barH);
+  const barGrad = ctx.createLinearGradient(0, barY + barH, 0, barY);
+  barGrad.addColorStop(0, '#2288aa');
+  barGrad.addColorStop(0.5, '#44cc88');
+  barGrad.addColorStop(1, '#ffcc44');
+  ctx.fillStyle = barGrad;
+  ctx.fillRect(8, barY + barH * (1 - fill), 4, barH * fill);
+
+  // Time
+  if (state === 'playing' || state === 'wipeout') {
+    const secs = Math.floor((performance.now() - rideStart) / 1000);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '13px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(secs + 's', W - 16, 28);
+    ctx.textAlign = 'left';
+  }
+
+  // Danger warning
+  if (dangerTimer > 15 && state === 'playing') {
+    const alpha = 0.3 + Math.sin(frameCount * 0.3) * 0.15;
+    ctx.fillStyle = `rgba(255,50,50,${alpha})`;
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    if (surfer.x < getTroughX(SURFER_Y) - 10) {
+      ctx.fillText('OFF THE WAVE!', W / 2, H - 50);
+    } else if (surfer.speed < 1.5) {
+      ctx.fillText('LOSING SPEED!', W / 2, H - 50);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  ctx.shadowBlur = 0;
+}
+
+// ═══════════════════════════════════════════
+//  MAIN LOOP
+// ═══════════════════════════════════════════
+function gameLoop() {
+  ctx.clearRect(0, 0, W, H);
+  waterTime += 0.016;
+  frameCount++;
+
+  // Physics
+  if (state === 'playing') {
+    updatePhysics();
+    updateEffects();
+  } else if (state === 'wipeout') {
+    updateWipeout();
+    updateEffects();
+    scrollY += surfer.speed * 0.5;
+  } else if (state === 'waiting') {
+    waterTime += 0.005; // slow ambient animation
+    scrollY += 1;
+  }
+
+  // Render (back to front)
+  drawSky();
+  drawFlatOcean();
+  drawWaveFace();
+  drawWaveWall();
+  drawCurl();
+  drawLipFoam();
+  drawTroughLine();
+  drawSweetSpot();
+
+  // Board trail & effects
+  drawEffects();
+
+  // Surfer
+  if (state !== 'waiting' && state !== 'gameover') drawSurfer();
+
+  // HUD
+  drawHUD();
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
