@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wakesurf Game</title>
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a1628;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-family: 'Courier New', monospace;
+  overflow: hidden;
+}
+canvas { display: block; image-rendering: pixelated; }
+#overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  z-index: 10;
+}
+#qr-container {
+  background: rgba(0,0,0,0.85);
+  border: 3px solid #00e5ff;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  pointer-events: auto;
+}
+#qr-container h2 {
+  color: #00e5ff;
+  font-size: 18px;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+#qr-container p {
+  color: #88ccdd;
+  font-size: 13px;
+  margin-top: 12px;
+}
+#qr-box { margin: 0 auto; }
+#status {
+  color: #ffcc00;
+  font-size: 14px;
+  margin-top: 8px;
+}
+#score-display {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  color: #fff;
+  font-size: 24px;
+  text-shadow: 2px 2px 0 #000;
+  z-index: 5;
+}
+#combo-display {
+  position: absolute;
+  top: 46px;
+  right: 24px;
+  color: #ffcc00;
+  font-size: 16px;
+  text-shadow: 2px 2px 0 #000;
+  z-index: 5;
+  display: none;
+}
+#game-over-overlay {
+  display: none;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 20;
+}
+#game-over-overlay h1 {
+  color: #ff4444;
+  font-size: 48px;
+  text-shadow: 3px 3px 0 #000;
+  margin-bottom: 12px;
+}
+#game-over-overlay p {
+  color: #fff;
+  font-size: 24px;
+}
+#game-over-overlay .sub {
+  color: #88ccdd;
+  font-size: 16px;
+  margin-top: 8px;
+}
+#keyboard-hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #556;
+  font-size: 12px;
+  z-index: 5;
+}
+#version {
+  position: fixed;
+  bottom: 4px;
+  right: 8px;
+  color: #556;
+  font-size: 10px;
+  z-index: 50;
+  pointer-events: none;
+}
+#back-btn {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  color: #556;
+  font-size: 12px;
+  z-index: 50;
+  cursor: pointer;
+  background: none;
+  border: 1px solid #334;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-family: 'Courier New', monospace;
+}
+#back-btn:hover { color: #00e5ff; border-color: #00e5ff; }
+#mode-selector {
+  display: none;
+  flex-direction: row;
+  gap: 12px;
+  margin-top: 16px;
+  justify-content: center;
+}
+#mode-selector button {
+  background: rgba(0,0,0,0.85);
+  color: #00e5ff;
+  border: 2px solid #00e5ff;
+  border-radius: 8px;
+  padding: 10px 28px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#mode-selector button:hover {
+  background: rgba(0,229,255,0.15);
+}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="score-display">SCORE: 0</div>
+<div id="combo-display"></div>
+<div id="keyboard-hint">Arrow keys to steer &bull; Space to restart</div>
+<div id="version">v3.0</div>
+<button id="back-btn" onclick="window.location.href='index.html'">&larr; MENU</button>
+
+<div id="overlay">
+  <div id="qr-container">
+    <h2>Scan to Connect Controller</h2>
+    <div id="qr-box"></div>
+    <p id="status">Initializing...</p>
+    <div id="mode-selector">
+      <button id="btn-play" onclick="selectMode()">PLAY</button>
+    </div>
+  </div>
+</div>
+
+<div id="game-over-overlay">
+  <h1>WIPEOUT!</h1>
+  <p id="final-score">Score: 0</p>
+  <p class="sub" id="ride-time">Ride time: 0s</p>
+  <p class="sub" id="best-combo">Best combo: x1</p>
+  <p class="sub" id="restart-hint">Press SPACE or tap phone to restart</p>
+</div>
+
+<script>
+// ── Canvas Setup ──
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const W = 400, H = 700;
+canvas.width = W;
+canvas.height = H;
+
+function fitCanvas() {
+  const scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+  canvas.style.width = (W * scale) + 'px';
+  canvas.style.height = (H * scale) + 'px';
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+// ── Game Constants ──
+const BOAT_BOTTOM = 80;
+const DANGER_FRONT = 140;
+const SAFE_TOP = 160;
+const SAFE_BOTTOM = 530;
+const DANGER_BACK = 580;
+const OFF_WAVE_BACK = 620;
+
+// ── Game State ──
+const STATE = { WAITING: 0, PLAYING: 1, FALLING: 2, GAME_OVER: 3 };
+let gameState = STATE.WAITING;
+
+let rider = { x: W * 0.4, y: H * 0.5, w: 32, h: 40, vx: 0, vy: 0,
+              airborne: false, airTime: 0, airHeight: 0, launchSpeed: 0 };
+let score = 0;
+let frameCount = 0;
+let rideStartTime = 0;
+let combo = 1;
+let comboTimer = 0;
+let bestCombo = 1;
+let floatingTexts = [];
+let particles = [];
+let foamParticles = [];
+
+// Wave / difficulty
+let waveNarrowFactor = 1.0;
+let sweetSpotSize = 1.0;
+let turbulenceLevel = 0;
+let wavePushForce = 0.04;
+let difficultyLevel = 1;
+let difficultyTimer = 0;
+let rogueWaveTimer = 0;
+let rogueWaveActive = false;
+
+// Gyro input
+let gyroGamma = 0;    // left-right
+let gyroBeta = 0;     // fore-aft
+let prevSensorGamma = 0, lastSensorGamma = 0;
+let prevSensorBeta = 0, lastSensorBeta = 0;
+let sensorTimestamp = 0;
+let sensorInterval = 33; // ~30Hz from controller
+
+// Pump detection
+let betaHistory = [];
+let pumpActive = false;
+let pumpBoost = 0;
+
+// Fall
+let fallType = '';
+let fallTimer = 0;
+let fallRotation = 0;
+let fallVx = 0, fallVy = 0;
+let dangerFrontTimer = 0;
+let dangerBackTimer = 0;
+let offWaveTimer = 0;
+
+// Carve detection
+let lastCarveDir = 0;
+let carveSpeed = 0;
+let carveDuration = 0;
+
+// Boat bob
+let boatBob = 0;
+
+// Connection
+let controllerConnected = false;
+let conn = null;
+let gameRunning = false;
+
+// ── Keyboard ──
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' && gameState === STATE.GAME_OVER) restartGame();
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+// ── PeerJS ──
+const peer = new Peer(null, {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' }
+    ]
+  }
+});
+
+peer.on('open', id => {
+  document.getElementById('status').textContent = 'Waiting for controller...';
+  const base = window.location.href.replace(/\/[^/]*$/, '/');
+  const url = base + 'controller.html?id=' + id;
+  document.getElementById('qr-box').innerHTML = '';
+  new QRCode(document.getElementById('qr-box'), {
+    text: url, width: 200, height: 200,
+    colorDark: '#00e5ff', colorLight: '#0a1628'
+  });
+});
+
+peer.on('error', err => {
+  document.getElementById('status').textContent = 'Connection error: ' + err.type;
+});
+
+peer.on('connection', c => {
+  if (conn) { c.close(); return; }
+  conn = c;
+  controllerConnected = true;
+  document.getElementById('status').textContent = 'Controller connected!';
+
+  c.on('open', () => {
+    c.send(JSON.stringify({ type: 'connected' }));
+    setTimeout(() => {
+      document.getElementById('keyboard-hint').style.display = 'none';
+      document.getElementById('mode-selector').style.display = 'flex';
+    }, 800);
+  });
+
+  c.on('data', raw => {
+    const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (msg.type === 'gyro') {
+      prevSensorGamma = lastSensorGamma;
+      prevSensorBeta = lastSensorBeta;
+      lastSensorGamma = msg.gamma;
+      lastSensorBeta = msg.beta;
+      sensorTimestamp = performance.now();
+    } else if (msg.type === 'restart') {
+      if (gameState === STATE.GAME_OVER) restartGame();
+    }
+  });
+
+  c.on('close', () => {
+    conn = null;
+    controllerConnected = false;
+    document.getElementById('overlay').style.display = 'flex';
+    document.getElementById('status').textContent = 'Controller disconnected. Scan again.';
+  });
+});
+
+// Show keyboard hint after delay
+setTimeout(() => {
+  if (!controllerConnected) {
+    document.getElementById('overlay').style.opacity = '0.6';
+  }
+}, 3000);
+
+window.addEventListener('keydown', e => {
+  if (!controllerConnected && gameState === STATE.WAITING &&
+      (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
+    document.getElementById('mode-selector').style.display = 'flex';
+  }
+});
+
+// ── Mode Selection ──
+function selectMode() {
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('keyboard-hint').style.display = 'none';
+  startGame();
+}
+
+// ── Wave Geometry ──
+function getWaveLeftEdge(y) {
+  const progress = Math.max(0, (y - BOAT_BOTTOM) / (SAFE_BOTTOM - BOAT_BOTTOM));
+  const narrow = rogueWaveActive ? waveNarrowFactor * 0.6 : waveNarrowFactor;
+  return 50 + (1 - progress) * 40 * narrow;
+}
+
+function getWaveRightEdge(y) {
+  const progress = Math.max(0, (y - BOAT_BOTTOM) / (SAFE_BOTTOM - BOAT_BOTTOM));
+  const narrow = rogueWaveActive ? waveNarrowFactor * 0.6 : waveNarrowFactor;
+  return 140 + progress * 220 * narrow;
+}
+
+function getSweetSpotCenter(y) {
+  const left = getWaveLeftEdge(y);
+  const right = getWaveRightEdge(y);
+  return left + (right - left) * 0.55;
+}
+
+function getSweetSpotRadius(y) {
+  const left = getWaveLeftEdge(y);
+  const right = getWaveRightEdge(y);
+  return (right - left) * 0.2 * sweetSpotSize;
+}
+
+function isInSweetSpot(x, y) {
+  const center = getSweetSpotCenter(y);
+  const radius = getSweetSpotRadius(y);
+  return Math.abs(x - center) < radius && y > SAFE_TOP && y < SAFE_BOTTOM;
+}
+
+function isOnWave(x, y) {
+  if (y < DANGER_FRONT || y > DANGER_BACK) return false;
+  const left = getWaveLeftEdge(y);
+  const right = getWaveRightEdge(y);
+  return x > left && x < right;
+}
+
+function isInDangerZone(x, y) {
+  if (y < DANGER_FRONT && y > BOAT_BOTTOM) return 'front';
+  if (y > SAFE_BOTTOM && y < OFF_WAVE_BACK) return 'back';
+  const left = getWaveLeftEdge(y);
+  const right = getWaveRightEdge(y);
+  if (x < left + 15 || x > right - 15) return 'edge';
+  return false;
+}
+
+// ── Gyro Processing (improved) ──
+function processGyro(dt) {
+  let gamma, beta;
+
+  if (controllerConnected) {
+    // Interpolate between sensor readings for smooth 60fps
+    const elapsed = performance.now() - sensorTimestamp;
+    const t = Math.min(1.5, elapsed / sensorInterval);
+    gamma = lastSensorGamma + (lastSensorGamma - prevSensorGamma) * (t - 1) * 0.6;
+    beta = lastSensorBeta + (lastSensorBeta - prevSensorBeta) * (t - 1) * 0.6;
+
+    // Bias compensation
+    gamma += 1.3;
+    beta -= 1.3;
+  } else {
+    // Keyboard fallback
+    gamma = 0; beta = 0;
+    if (keys['ArrowLeft']) gamma = -6;
+    if (keys['ArrowRight']) gamma = 6;
+    if (keys['ArrowUp']) beta = -4;
+    if (keys['ArrowDown']) beta = 4;
+  }
+
+  // Dead zone ±1°
+  if (Math.abs(gamma) < 1) gamma = 0;
+  else gamma = gamma - Math.sign(gamma) * 1;
+
+  if (Math.abs(beta) < 1) beta = 0;
+  else beta = beta - Math.sign(beta) * 1;
+
+  // Clamp to ±8° range
+  gamma = Math.max(-8, Math.min(8, gamma));
+  beta = Math.max(-8, Math.min(8, beta));
+
+  // Normalize to -1..1
+  gyroGamma = gamma / 7; // after dead zone subtraction, max is 7
+  gyroBeta = beta / 7;
+
+  // Fall detection: rapid beta plunge
+  if (controllerConnected) {
+    const betaRate = Math.abs(lastSensorBeta - prevSensorBeta);
+    if (betaRate > 10) {
+      triggerFall('flail');
+      return;
+    }
+    // Extreme tilt
+    if (Math.abs(lastSensorGamma) > 25 || Math.abs(lastSensorBeta) > 25) {
+      triggerFall('flail');
+      return;
+    }
+  }
+}
+
+// ── Pump Detection ──
+function detectPump() {
+  betaHistory.push({ val: gyroBeta, t: performance.now() });
+  // Keep 2 second window
+  const cutoff = performance.now() - 2000;
+  while (betaHistory.length > 0 && betaHistory[0].t < cutoff) betaHistory.shift();
+
+  if (betaHistory.length < 6) { pumpActive = false; return; }
+
+  // Count zero crossings
+  let crossings = 0;
+  for (let i = 1; i < betaHistory.length; i++) {
+    if ((betaHistory[i].val > 0) !== (betaHistory[i-1].val > 0)) crossings++;
+  }
+
+  // 3-6 crossings in 2s = valid pump (0.75-1.5 Hz)
+  if (crossings >= 3 && crossings <= 6) {
+    // Check amplitude
+    let maxVal = 0;
+    for (const b of betaHistory) maxVal = Math.max(maxVal, Math.abs(b.val));
+    if (maxVal > 0.25) { // ~2° after normalization
+      pumpActive = true;
+      pumpBoost = Math.min(pumpBoost + 0.02, 1.5);
+      return;
+    }
+  }
+  pumpActive = false;
+  pumpBoost = Math.max(0, pumpBoost - 0.01);
+}
+
+// ── Physics ──
+function updatePhysics(dt) {
+  if (rider.airborne) {
+    // Parabolic arc
+    rider.airTime += dt;
+    rider.airHeight -= 3 * dt; // gravity
+    rider.vy = 0;
+    rider.x += rider.vx * 0.5;
+    // Land when airHeight <= 0
+    if (rider.airHeight <= 0) {
+      rider.airborne = false;
+      rider.airHeight = 0;
+      // Landing score
+      const airScore = Math.round(rider.launchSpeed * 10 + rider.airTime * 30);
+      addScore(airScore, 'AIR!');
+      addScore(50, 'CLEAN LAND');
+      spawnSplash(rider.x, rider.y, 8);
+      rider.airTime = 0;
+    }
+    return;
+  }
+
+  // Lateral force from gamma
+  const lateralForce = gyroGamma * 0.4;
+  rider.vx += lateralForce;
+
+  // Vertical force from beta + wave push
+  const verticalForce = gyroBeta * 0.35;
+  rider.vy += verticalForce;
+  rider.vy -= wavePushForce; // wave pushes rider toward boat (negative y)
+
+  // Pump boost — extra forward resistance (counteract wave push)
+  if (pumpActive) {
+    rider.vy += 0.06;
+  }
+
+  // Speed bonus dropping from lip to trough (right to left, high x to low x)
+  const waveCenter = getSweetSpotCenter(rider.y);
+  const waveRight = getWaveRightEdge(rider.y);
+  if (rider.vx < -1 && rider.x > waveCenter) {
+    // Carving left from high on face — speed bonus
+    carveSpeed = Math.abs(rider.vx);
+    carveDuration++;
+    const carveDir = -1;
+    if (lastCarveDir !== carveDir && lastCarveDir !== 0 && carveDuration > 10) {
+      // Direction change = completed carve
+      const carveScore = Math.round(carveSpeed * carveDuration * 0.1);
+      if (carveScore > 5) addScore(carveScore, 'CARVE');
+      carveDuration = 0;
+    }
+    lastCarveDir = carveDir;
+  } else if (rider.vx > 1 && rider.x < waveCenter) {
+    carveSpeed = Math.abs(rider.vx);
+    carveDuration++;
+    const carveDir = 1;
+    if (lastCarveDir !== carveDir && lastCarveDir !== 0 && carveDuration > 10) {
+      const carveScore = Math.round(carveSpeed * carveDuration * 0.1);
+      if (carveScore > 5) addScore(carveScore, 'CARVE');
+      carveDuration = 0;
+    }
+    lastCarveDir = carveDir;
+  } else {
+    carveDuration = 0;
+  }
+
+  // Turbulence
+  if (turbulenceLevel > 0) {
+    rider.vx += (Math.random() - 0.5) * turbulenceLevel * 0.15;
+    rider.vy += (Math.random() - 0.5) * turbulenceLevel * 0.1;
+  }
+
+  // Drag
+  rider.vx *= 0.96;
+  rider.vy *= 0.94;
+
+  // Clamp velocity
+  rider.vx = Math.max(-8, Math.min(8, rider.vx));
+  rider.vy = Math.max(-6, Math.min(6, rider.vy));
+
+  // Edge springs — wave boundaries
+  const leftEdge = getWaveLeftEdge(rider.y);
+  const rightEdge = getWaveRightEdge(rider.y);
+
+  if (rider.x < leftEdge + 20) {
+    rider.vx += (leftEdge + 20 - rider.x) * 0.12;
+  }
+  if (rider.x > rightEdge - 20) {
+    rider.vx -= (rider.x - (rightEdge - 20)) * 0.12;
+  }
+  // Vertical edges
+  if (rider.y < SAFE_TOP) {
+    rider.vy += (SAFE_TOP - rider.y) * 0.08;
+  }
+  if (rider.y > SAFE_BOTTOM) {
+    rider.vy -= (rider.y - SAFE_BOTTOM) * 0.08;
+  }
+
+  // Apply velocity
+  rider.x += rider.vx;
+  rider.y += rider.vy;
+
+  // Air launch — near lip with enough rightward speed
+  if (rider.x > rightEdge - 30 && rider.vx > 3 && !rider.airborne) {
+    rider.airborne = true;
+    rider.airTime = 0;
+    rider.airHeight = 3 + Math.abs(rider.vx) * 0.8;
+    rider.launchSpeed = Math.abs(rider.vx);
+    comboHit();
+  }
+
+  // Check danger zones
+  const danger = isInDangerZone(rider.x, rider.y);
+  if (danger === 'front') {
+    dangerFrontTimer++;
+    if (dangerFrontTimer > 90) triggerFall('boat_crash'); // 1.5s at 60fps
+  } else {
+    dangerFrontTimer = Math.max(0, dangerFrontTimer - 2);
+  }
+
+  if (danger === 'back') {
+    dangerBackTimer++;
+    if (dangerBackTimer > 90) triggerFall('off_wave');
+  } else {
+    dangerBackTimer = Math.max(0, dangerBackTimer - 2);
+  }
+
+  // Off wave bounds
+  if (!isOnWave(rider.x, rider.y) && rider.y > DANGER_FRONT && rider.y < OFF_WAVE_BACK) {
+    offWaveTimer++;
+    if (offWaveTimer > 30) triggerFall('over_lip'); // 0.5s
+  } else {
+    offWaveTimer = Math.max(0, offWaveTimer - 2);
+  }
+
+  // Hard off-screen
+  if (rider.y < BOAT_BOTTOM) triggerFall('boat_crash');
+  if (rider.y > OFF_WAVE_BACK) triggerFall('off_wave');
+  if (rider.x < 10 || rider.x > W - 10) triggerFall('over_lip');
+}
+
+// ── Fall ──
+function triggerFall(type) {
+  if (gameState !== STATE.PLAYING) return;
+  gameState = STATE.FALLING;
+  fallType = type;
+  fallTimer = 60; // 1 second
+  fallRotation = 0;
+  fallVx = rider.vx;
+  fallVy = rider.vy;
+  if (type === 'boat_crash') { fallVy = -4; fallVx = (Math.random()-0.5)*3; }
+  if (type === 'over_lip') { fallVx = 3; fallVy = 2; }
+  if (type === 'off_wave') { fallVy = 3; fallVx = (Math.random()-0.5)*2; }
+  spawnSplash(rider.x, rider.y, 15);
+}
+
+function updateFall() {
+  fallTimer--;
+  fallRotation += 0.15;
+  rider.x += fallVx * 0.5;
+  rider.y += fallVy * 0.5;
+  fallVy += 0.1;
+  // Spawn splash particles during fall
+  if (fallTimer % 5 === 0) spawnSplash(rider.x, rider.y, 3);
+  if (fallTimer <= 0) {
+    spawnSplash(rider.x, rider.y, 20); // big final splash
+    gameState = STATE.GAME_OVER;
+    showGameOver();
+  }
+}
+
+// ── Scoring ──
+function addScore(pts, label) {
+  score += pts * combo;
+  floatingTexts.push({
+    text: '+' + (pts * combo) + ' ' + label,
+    x: rider.x, y: rider.y - 30 - rider.airHeight * 10,
+    life: 60, color: combo > 1 ? '#ffcc00' : '#ffffff'
+  });
+}
+
+function comboHit() {
+  combo++;
+  comboTimer = 120; // 2s to keep combo
+  if (combo > bestCombo) bestCombo = combo;
+}
+
+function updateCombo() {
+  if (comboTimer > 0) {
+    comboTimer--;
+    if (comboTimer <= 0) combo = 1;
+  }
+  const el = document.getElementById('combo-display');
+  if (combo > 1) {
+    el.style.display = 'block';
+    el.textContent = 'x' + combo + ' COMBO';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// ── Difficulty ──
+function updateDifficulty() {
+  difficultyTimer++;
+  if (difficultyTimer % 1800 === 0) { // every ~30s
+    difficultyLevel++;
+    waveNarrowFactor = Math.max(0.5, waveNarrowFactor - 0.08);
+    sweetSpotSize = Math.max(0.4, sweetSpotSize - 0.1);
+    turbulenceLevel = Math.min(3, turbulenceLevel + 0.5);
+    wavePushForce = Math.min(0.12, wavePushForce + 0.012);
+  }
+  // Rogue waves at level 5+
+  if (difficultyLevel >= 5) {
+    rogueWaveTimer++;
+    if (!rogueWaveActive && rogueWaveTimer > 600 && Math.random() < 0.003) {
+      rogueWaveActive = true;
+      rogueWaveTimer = 0;
+    }
+    if (rogueWaveActive && rogueWaveTimer > 180) { // 3s rogue wave
+      rogueWaveActive = false;
+      rogueWaveTimer = 0;
+    }
+  }
+}
+
+// ── Particles ──
+function spawnSplash(x, y, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: (Math.random() - 0.5) * 6,
+      life: 25 + Math.random() * 20,
+      size: 2 + Math.random() * 4,
+      color: Math.random() > 0.4 ? '#ffffff' : '#aaeeff'
+    });
+  }
+}
+
+function spawnCarveSpray() {
+  const speed = Math.sqrt(rider.vx*rider.vx + rider.vy*rider.vy);
+  if (speed < 2 || rider.airborne) return;
+  const count = Math.min(3, Math.floor(speed / 2));
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: rider.x - rider.vx * 2,
+      y: rider.y + 18,
+      vx: -rider.vx * 0.3 + (Math.random()-0.5)*2,
+      vy: (Math.random()-0.5)*2 + 1,
+      life: 15 + Math.random() * 10,
+      size: 1 + Math.random() * 3,
+      color: '#aaeeff'
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05;
+    p.life--;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    ctx.globalAlpha = p.life / 40;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function updateFloatingTexts() {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y -= 1;
+    ft.life--;
+    if (ft.life <= 0) { floatingTexts.splice(i, 1); continue; }
+    ctx.globalAlpha = ft.life / 60;
+    ctx.fillStyle = ft.color;
+    ctx.font = '12px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+}
+
+// ── Rendering ──
+function drawSky() {
+  const grad = ctx.createLinearGradient(0, 0, 0, 30);
+  grad.addColorStop(0, '#87CEEB');
+  grad.addColorStop(1, '#4a90b8');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, 35);
+  // Horizon line
+  ctx.fillStyle = '#3a7090';
+  ctx.fillRect(0, 33, W, 2);
+}
+
+function drawBoat() {
+  const bob = Math.sin(frameCount * 0.03) * 2;
+  boatBob = bob;
+  const by = 30 + bob;
+
+  // Hull
+  ctx.fillStyle = '#2a2a3a';
+  ctx.fillRect(120, by + 10, 160, 30);
+  ctx.fillRect(130, by + 5, 140, 8);
+  ctx.fillRect(140, by + 40, 120, 8);
+
+  // Swim platform
+  ctx.fillStyle = '#8B6914';
+  ctx.fillRect(155, by + 48, 90, 6);
+  ctx.fillStyle = '#6B4914';
+  ctx.fillRect(158, by + 48, 2, 6);
+  ctx.fillRect(178, by + 48, 2, 6);
+  ctx.fillRect(198, by + 48, 2, 6);
+  ctx.fillRect(218, by + 48, 2, 6);
+  ctx.fillRect(238, by + 48, 2, 6);
+
+  // Wake tower
+  ctx.fillStyle = '#555566';
+  ctx.fillRect(168, by - 10, 4, 20);
+  ctx.fillRect(228, by - 10, 4, 20);
+  ctx.fillRect(168, by - 12, 64, 4);
+
+  // Motors
+  ctx.fillStyle = '#888899';
+  ctx.fillRect(175, by + 42, 12, 10);
+  ctx.fillRect(213, by + 42, 12, 10);
+  ctx.fillStyle = '#666677';
+  ctx.fillRect(178, by + 52, 6, 4);
+  ctx.fillRect(216, by + 52, 6, 4);
+
+  // Wake spray at waterline
+  const wt = frameCount * 0.1;
+  ctx.fillStyle = 'rgba(170,238,255,0.5)';
+  ctx.fillRect(125 + Math.sin(wt)*3, by + 42, 8, 3);
+  ctx.fillRect(265 + Math.cos(wt)*3, by + 42, 8, 3);
+  ctx.fillRect(145 + Math.sin(wt+1)*2, by + 45, 6, 2);
+  ctx.fillRect(245 + Math.cos(wt+1)*2, by + 45, 6, 2);
+}
+
+function drawWater() {
+  // Flat water behind boat (left/trough area)
+  ctx.fillStyle = '#0a4a7a';
+  ctx.fillRect(0, 35, W, H - 35);
+
+  // Wave face — gradient rising left to right
+  for (let y = BOAT_BOTTOM; y < OFF_WAVE_BACK; y += 2) {
+    const left = getWaveLeftEdge(y);
+    const right = getWaveRightEdge(y);
+    const width = right - left;
+
+    // Draw the wave face as horizontal gradient strips
+    for (let x = left; x < right; x += 2) {
+      const t = (x - left) / width; // 0=trough, 1=lip
+      const r = Math.floor(10 + t * 20);
+      const g = Math.floor(74 + t * 130);
+      const b = Math.floor(122 + t * 100);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(x, y, 2, 2);
+    }
+  }
+
+  // Wave contour lines (scrolling for motion feel)
+  const scroll = (frameCount * 0.8) % 20;
+  ctx.fillStyle = 'rgba(100,200,230,0.15)';
+  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 20) {
+    const left = getWaveLeftEdge(y);
+    const right = getWaveRightEdge(y);
+    for (let x = left + 10; x < right - 10; x += 4) {
+      const wobble = Math.sin((x + frameCount * 0.5) * 0.08) * 2;
+      ctx.fillRect(x, y + wobble, 3, 1);
+    }
+  }
+}
+
+function drawLipFoam() {
+  // Churning foam at right edge (lip/crest)
+  const ft = frameCount * 0.15;
+  for (let y = BOAT_BOTTOM + 20; y < SAFE_BOTTOM + 30; y += 4) {
+    const right = getWaveRightEdge(y);
+    const foamWidth = 15 + Math.sin(y * 0.1 + ft) * 5;
+
+    // White foam
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    for (let i = 0; i < foamWidth; i += 3) {
+      const fx = right - i + Math.sin(y * 0.3 + ft + i) * 3;
+      const fs = 2 + Math.random() * 2;
+      ctx.fillRect(fx, y + Math.sin(fx*0.1+ft)*2, fs, fs);
+    }
+    // Cyan foam
+    ctx.fillStyle = 'rgba(170,238,255,0.5)';
+    for (let i = 0; i < foamWidth * 0.6; i += 4) {
+      const fx = right - foamWidth - i + Math.sin(y * 0.2 + ft) * 2;
+      ctx.fillRect(fx, y + 1, 2, 2);
+    }
+  }
+}
+
+function drawSweetSpot() {
+  // Subtle pulsing glow on optimal zone
+  const pulse = 0.15 + Math.sin(frameCount * 0.05) * 0.08;
+  ctx.fillStyle = `rgba(0,229,255,${pulse})`;
+  for (let y = SAFE_TOP + 20; y < SAFE_BOTTOM - 20; y += 4) {
+    const center = getSweetSpotCenter(y);
+    const radius = getSweetSpotRadius(y);
+    ctx.fillRect(center - radius, y, radius * 2, 3);
+  }
+}
+
+function drawDangerWarning() {
+  // Flash warning when in danger zones
+  if (dangerFrontTimer > 20) {
+    const alpha = 0.2 + Math.sin(frameCount * 0.3) * 0.15;
+    ctx.fillStyle = `rgba(255,50,50,${alpha})`;
+    ctx.fillRect(0, BOAT_BOTTOM, W, DANGER_FRONT - BOAT_BOTTOM);
+    ctx.fillStyle = '#ff4444';
+    ctx.font = '14px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('TOO CLOSE TO BOAT!', W/2, DANGER_FRONT - 15);
+    ctx.textAlign = 'left';
+  }
+  if (dangerBackTimer > 20) {
+    const alpha = 0.2 + Math.sin(frameCount * 0.3) * 0.15;
+    ctx.fillStyle = `rgba(255,50,50,${alpha})`;
+    ctx.fillRect(0, SAFE_BOTTOM, W, DANGER_BACK - SAFE_BOTTOM);
+    ctx.fillStyle = '#ff4444';
+    ctx.font = '14px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('FALLING BEHIND!', W/2, SAFE_BOTTOM + 30);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawRider() {
+  const x = rider.x;
+  const y = rider.y - (rider.airborne ? rider.airHeight * 10 : 0);
+  const leanAngle = rider.vx * 0.04;
+
+  ctx.save();
+  ctx.translate(x, y);
+
+  if (gameState === STATE.FALLING) {
+    ctx.rotate(fallRotation);
+  } else {
+    ctx.rotate(leanAngle);
+  }
+
+  const cx = -rider.w / 2;
+  const cy = -rider.h / 2;
+
+  // Shadow on water when airborne
+  if (rider.airborne) {
+    ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(rider.x - 14, rider.y + 8, 28, 6);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(leanAngle);
+  }
+
+  // Board (from behind — horizontal bar under feet)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(cx - 4, cy + 28, 40, 8);
+  ctx.fillRect(cx, cy + 26, 32, 2);
+  ctx.fillRect(cx + 4, cy + 36, 24, 3);
+  ctx.fillRect(cx + 8, cy + 39, 16, 2);
+  // Board stripe
+  ctx.fillStyle = '#ff4488';
+  ctx.fillRect(cx + 10, cy + 28, 12, 8);
+
+  // Hair (from behind)
+  ctx.fillStyle = '#8B5E3C';
+  ctx.fillRect(cx + 8, cy, 16, 6);
+  ctx.fillRect(cx + 6, cy + 2, 20, 3);
+
+  // Head
+  ctx.fillStyle = '#ffcc66';
+  ctx.fillRect(cx + 10, cy + 5, 12, 8);
+
+  // Torso (blue rash guard from behind)
+  ctx.fillStyle = '#2266aa';
+  ctx.fillRect(cx + 8, cy + 13, 16, 10);
+
+  // Board shorts
+  ctx.fillStyle = '#ee5533';
+  ctx.fillRect(cx + 8, cy + 23, 16, 5);
+
+  // Arms — move with carving
+  ctx.fillStyle = '#ffcc66';
+  const armOffset = rider.airborne ? -4 : Math.sin(frameCount * 0.1) * (pumpActive ? 3 : 1);
+  ctx.fillRect(cx + 2, cy + 14 + armOffset, 6, 4); // left arm
+  ctx.fillRect(cx + 24, cy + 14 - armOffset, 6, 4); // right arm
+
+  // Legs
+  ctx.fillStyle = '#ffcc66';
+  ctx.fillRect(cx + 10, cy + 28, 5, 2);
+  ctx.fillRect(cx + 17, cy + 28, 5, 2);
+
+  ctx.restore();
+}
+
+function drawWakeLines() {
+  // Subtle wake lines in flat water
+  ctx.fillStyle = 'rgba(100,180,220,0.1)';
+  const scroll = (frameCount * 0.5) % 30;
+  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 30) {
+    for (let x = 10; x < getWaveLeftEdge(y) - 5; x += 8) {
+      ctx.fillRect(x, y + Math.sin(x*0.05)*2, 6, 1);
+    }
+  }
+}
+
+// ── Game Flow ──
+function startGame() {
+  gameState = STATE.PLAYING;
+  gameRunning = true;
+  score = 0;
+  frameCount = 0;
+  combo = 1;
+  comboTimer = 0;
+  bestCombo = 1;
+  floatingTexts = [];
+  particles = [];
+  rider.x = W * 0.4;
+  rider.y = H * 0.5;
+  rider.vx = 0;
+  rider.vy = 0;
+  rider.airborne = false;
+  rider.airTime = 0;
+  rider.airHeight = 0;
+  waveNarrowFactor = 1.0;
+  sweetSpotSize = 1.0;
+  turbulenceLevel = 0;
+  wavePushForce = 0.04;
+  difficultyLevel = 1;
+  difficultyTimer = 0;
+  rogueWaveTimer = 0;
+  rogueWaveActive = false;
+  dangerFrontTimer = 0;
+  dangerBackTimer = 0;
+  offWaveTimer = 0;
+  betaHistory = [];
+  pumpActive = false;
+  pumpBoost = 0;
+  fallTimer = 0;
+  rideStartTime = performance.now();
+  document.getElementById('game-over-overlay').style.display = 'none';
+}
+
+function showGameOver() {
+  const rideTime = ((performance.now() - rideStartTime) / 1000).toFixed(1);
+  document.getElementById('final-score').textContent = 'Score: ' + score;
+  document.getElementById('ride-time').textContent = 'Ride time: ' + rideTime + 's';
+  document.getElementById('best-combo').textContent = 'Best combo: x' + bestCombo;
+  document.getElementById('game-over-overlay').style.display = 'flex';
+  if (conn && conn.open) {
+    conn.send(JSON.stringify({ type: 'gameover', score }));
+  }
+}
+
+function restartGame() {
+  startGame();
+}
+
+// ── Main Loop ──
+function gameLoop() {
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // Background layers
+  drawSky();
+  drawWater();
+  drawWakeLines();
+  drawSweetSpot();
+  drawLipFoam();
+  drawBoat();
+
+  if (gameState === STATE.PLAYING) {
+    frameCount++;
+    processGyro();
+    detectPump();
+    updatePhysics(1);
+    updateDifficulty();
+    updateCombo();
+    spawnCarveSpray();
+
+    // Riding score
+    if (isInSweetSpot(rider.x, rider.y)) {
+      score += 1;
+    } else if (isOnWave(rider.x, rider.y)) {
+      score += 0.5;
+    }
+
+    // Pump score
+    if (pumpActive) score += 2;
+
+    drawDangerWarning();
+  } else if (gameState === STATE.FALLING) {
+    frameCount++;
+    updateFall();
+  }
+
+  // Draw rider
+  drawRider();
+
+  // Particles & floating text
+  updateParticles();
+  updateFloatingTexts();
+
+  // Score display
+  document.getElementById('score-display').textContent = 'SCORE: ' + Math.floor(score);
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>

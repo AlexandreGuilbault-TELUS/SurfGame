@@ -106,6 +106,56 @@ canvas { display: block; image-rendering: pixelated; }
   z-index: 50;
   pointer-events: none;
 }
+#game-menu {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: rgba(10,22,40,0.95);
+  z-index: 30;
+}
+#game-menu h1 {
+  color: #00e5ff;
+  font-size: 28px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  margin-bottom: 40px;
+  text-shadow: 0 0 20px rgba(0,229,255,0.4);
+}
+#game-menu .menu-buttons {
+  display: flex;
+  gap: 24px;
+}
+#game-menu .menu-btn {
+  background: rgba(0,0,0,0.85);
+  border: 2px solid #00e5ff;
+  border-radius: 12px;
+  padding: 24px 32px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s, transform 0.15s;
+  width: 150px;
+}
+#game-menu .menu-btn:hover {
+  background: rgba(0,229,255,0.15);
+  transform: scale(1.05);
+}
+#game-menu .menu-btn .icon {
+  color: #00e5ff;
+  font-size: 28px;
+  margin-bottom: 10px;
+  display: block;
+}
+#game-menu .menu-btn .label {
+  color: #00e5ff;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  display: block;
+}
 #mode-selector {
   display: none;
   flex-direction: row;
@@ -172,9 +222,23 @@ canvas { display: block; image-rendering: pixelated; }
 <canvas id="game"></canvas>
 <div id="score-display">SCORE: 0</div>
 <div id="keyboard-hint">Arrow keys to steer • Space to restart</div>
-<div id="version">v2.2</div>
+<div id="version">v3.0</div>
 
-<div id="overlay">
+<div id="game-menu">
+  <h1>Surf Game v3.0</h1>
+  <div class="menu-buttons">
+    <div class="menu-btn" onclick="chooseSurf()">
+      <span class="icon">~ ~ ~</span>
+      <span class="label">Surf</span>
+    </div>
+    <div class="menu-btn" onclick="chooseWakesurf()">
+      <span class="icon">_/\_</span>
+      <span class="label">Wakesurf</span>
+    </div>
+  </div>
+</div>
+
+<div id="overlay" style="display:none">
   <div id="qr-container">
     <h2>Scan to Connect Controller</h2>
     <div id="qr-box"></div>
@@ -568,10 +632,19 @@ function checkCollision(a, b) {
          a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+// ── Menu Selection ──
+function chooseSurf() {
+  document.getElementById('game-menu').style.display = 'none';
+  document.getElementById('overlay').style.display = 'flex';
+}
+function chooseWakesurf() {
+  window.location.href = 'wakesurf.html';
+}
+
 // ── Mode Selection ──
 function selectMode(mode) {
   DEBUG_MODE = (mode === 'debug');
-  document.getElementById('version').textContent = 'v2.2' + (DEBUG_MODE ? ' DEBUG' : '');
+  document.getElementById('version').textContent = 'v3.0' + (DEBUG_MODE ? ' DEBUG' : '');
   document.getElementById('overlay').style.display = 'none';
   document.getElementById('keyboard-hint').style.display = 'none';
   startGame();
