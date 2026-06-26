@@ -97,12 +97,22 @@ canvas { display: block; image-rendering: pixelated; }
   font-size: 12px;
   z-index: 5;
 }
+#version {
+  position: fixed;
+  bottom: 4px;
+  right: 8px;
+  color: #556;
+  font-size: 10px;
+  z-index: 50;
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <div id="score-display">SCORE: 0</div>
 <div id="keyboard-hint">Arrow keys to steer • Space to restart</div>
+<div id="version">v2.0</div>
 
 <div id="overlay">
   <div id="qr-container">
@@ -137,7 +147,13 @@ window.addEventListener('resize', fitCanvas);
 
 // ── Game State ──
 let surfer = { x: W / 2, y: H - 120, w: 28, h: 36 };
-let targetX = surfer.x;
+let surferVx = 0;           // velocity — persists between frames for momentum
+let gyroForce = 0;          // current tilt-derived acceleration force
+let baseScrollSpeed = 2;    // base wave speed (increases with difficulty)
+let currentSpeed = 2;       // actual scroll speed (modulated by beta)
+let targetSpeed = 2;        // target scroll speed from beta tilt
+let betaNeutral = 45;       // neutral beta angle when holding phone/board
+let carveTrail = [];        // recent positions for carve trail effect
 let obstacles = [];
 let particles = [];
 let foamLines = [];
@@ -216,9 +232,26 @@ peer.on('connection', c => {
   c.on('data', raw => {
     const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (msg.type === 'gyro') {
-      // gamma: clamp to ±4.5° for high sensitivity
-      const tilt = Math.max(-4.5, Math.min(4.5, msg.gamma));
-      targetX = W / 2 + (tilt / 4.5) * (W / 2 - 30);
+      // gamma → lateral force with dead zone and ±15° range
+      let tilt = Math.max(-15, Math.min(15, msg.gamma));
+      // Dead zone: ignore ±2° micro-wobble
+      if (Math.abs(tilt) < 2) tilt = 0;
+      else tilt = tilt - Math.sign(tilt) * 2; // subtract dead zone
+      // Normalize to -1..1 then scale to acceleration
+      gyroForce = (tilt / 13) * 0.35;
+
+      // beta → wave speed modulation
+      const beta = msg.beta || betaNeutral;
+      const betaDelta = beta - betaNeutral;
+      if (betaDelta < -5) {
+        // Leaning forward — speed up (up to 1.5x)
+        targetSpeed = baseScrollSpeed * (1 + Math.min(0.5, Math.abs(betaDelta + 5) / 30));
+      } else if (betaDelta > 5) {
+        // Leaning back — slow down (down to 0.6x)
+        targetSpeed = baseScrollSpeed * (1 - Math.min(0.4, (betaDelta - 5) / 30));
+      } else {
+        targetSpeed = baseScrollSpeed;
+      }
     } else if (msg.type === 'restart') {
       if (gameOver) restartGame();
     }
@@ -294,10 +327,29 @@ function drawWood(x, y, w, h) {
   ctx.fillRect(x + 6, y + 9, w - 12, 1);
 }
 
+// ── Draw Carve Trail ──
+function drawCarveTrail() {
+  if (carveTrail.length < 2) return;
+  for (let i = 1; i < carveTrail.length; i++) {
+    const alpha = (i / carveTrail.length) * 0.3;
+    ctx.fillStyle = `rgba(170,238,255,${alpha})`;
+    ctx.fillRect(carveTrail[i].x - 1, carveTrail[i].y + 20, 2, 3);
+  }
+}
+
 // ── Draw Surfer ──
 function drawSurfer(x, y) {
-  const cx = x - surfer.w / 2;
-  const cy = y - surfer.h / 2;
+  // Carve trail behind surfer
+  drawCarveTrail();
+
+  // Rotate surfer slightly based on velocity (lean into carve)
+  const leanAngle = surferVx * 0.04; // ~0.32 rad max at full velocity
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(leanAngle);
+
+  const cx = -surfer.w / 2;
+  const cy = -surfer.h / 2;
 
   // Board
   ctx.fillStyle = BOARD_COLOR;
@@ -338,12 +390,26 @@ function drawSurfer(x, y) {
   ctx.fillRect(cx + 12, cy + 6, 2, 2);
   ctx.fillRect(cx + 18, cy + 6, 2, 2);
 
-  // Wake/splash behind surfer
-  ctx.fillStyle = 'rgba(170,238,255,0.5)';
+  ctx.restore();
+
+  // Wake/splash — scales with velocity for carving feedback
+  const speed = Math.abs(surferVx);
   const wt = Date.now() / 100;
-  ctx.fillRect(cx + 6 + Math.sin(wt) * 3, cy + 40, 4, 3);
-  ctx.fillRect(cx + 18 + Math.cos(wt) * 3, cy + 42, 4, 3);
-  ctx.fillRect(cx + 12 + Math.sin(wt + 1) * 2, cy + 44, 6, 2);
+  const wakeAlpha = Math.min(0.7, 0.3 + speed * 0.05);
+  const wakeSize = Math.min(6, 3 + speed * 0.4);
+  const wakeCx = x - surfer.w / 2;
+  const wakeCy = y - surfer.h / 2;
+  ctx.fillStyle = `rgba(170,238,255,${wakeAlpha})`;
+  // Spray to sides when carving hard
+  const sprayDir = -Math.sign(surferVx) || 1;
+  ctx.fillRect(wakeCx + 6 + Math.sin(wt) * 3, wakeCy + 40, wakeSize, 3);
+  ctx.fillRect(wakeCx + 18 + Math.cos(wt) * 3, wakeCy + 42, wakeSize, 3);
+  ctx.fillRect(wakeCx + 12 + Math.sin(wt + 1) * 2, wakeCy + 44, wakeSize + 1, 2);
+  if (speed > 3) {
+    // Extra spray particles when carving
+    ctx.fillRect(wakeCx + 14 + sprayDir * 8, wakeCy + 38, 3, 3);
+    ctx.fillRect(wakeCx + 14 + sprayDir * 14, wakeCy + 36, 2, 2);
+  }
 }
 
 // ── Draw Ocean ──
@@ -419,13 +485,18 @@ function startGame() {
   gameRunning = true;
   gameOver = false;
   score = 0;
+  baseScrollSpeed = 2;
+  currentSpeed = 2;
+  targetSpeed = 2;
   scrollSpeed = 2;
   spawnInterval = 90;
   spawnTimer = 0;
   obstacles = [];
   particles = [];
+  carveTrail = [];
   surfer.x = W / 2;
-  targetX = surfer.x;
+  surferVx = 0;
+  gyroForce = 0;
   document.getElementById('game-over-overlay').style.display = 'none';
 }
 
@@ -460,18 +531,42 @@ function gameLoop() {
   drawOcean();
 
   if (gameRunning) {
-    // Keyboard input
-    if (keys['ArrowLeft']) targetX -= 5;
-    if (keys['ArrowRight']) targetX += 5;
-    targetX = Math.max(20, Math.min(W - 20, targetX));
+    // Keyboard input — apply force, not position
+    if (keys['ArrowLeft']) gyroForce = -0.35;
+    else if (keys['ArrowRight']) gyroForce = 0.35;
+    else if (!controllerConnected) gyroForce = 0;
 
-    // Lerp surfer position
-    surfer.x += (targetX - surfer.x) * 0.15;
+    // Apply acceleration from tilt force
+    surferVx += gyroForce;
+    // Water drag — natural deceleration / gliding feel
+    surferVx *= 0.96;
+    // Clamp max velocity
+    surferVx = Math.max(-8, Math.min(8, surferVx));
+    // Edge spring — soft bounce when near canvas edges
+    const edgeMargin = 25;
+    if (surfer.x < edgeMargin) {
+      surferVx += (edgeMargin - surfer.x) * 0.15;
+    } else if (surfer.x > W - edgeMargin) {
+      surferVx -= (surfer.x - (W - edgeMargin)) * 0.15;
+    }
+    // Apply velocity to position
+    surfer.x += surferVx;
+    // Hard clamp as safety net
+    surfer.x = Math.max(10, Math.min(W - 10, surfer.x));
+
+    // Lerp scroll speed toward target (beta-modulated)
+    currentSpeed += (targetSpeed - currentSpeed) * 0.05;
+    scrollSpeed = currentSpeed;
+
+    // Record carve trail
+    carveTrail.push({ x: surfer.x, y: surfer.y });
+    if (carveTrail.length > 30) carveTrail.shift();
 
     // Increase difficulty
     score++;
     if (score % 500 === 0) {
-      scrollSpeed = Math.min(6, scrollSpeed + 0.3);
+      baseScrollSpeed = Math.min(6, baseScrollSpeed + 0.3);
+      targetSpeed = baseScrollSpeed;
       spawnInterval = Math.max(30, spawnInterval - 5);
     }
 

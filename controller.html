@@ -336,29 +336,34 @@ document.getElementById('enable-btn').addEventListener('click', async () => {
 // ── Gyro Streaming ──
 let gyroInterval = null;
 let lastBeta = 0, lastGamma = 0;
+let smoothBeta = 0, smoothGamma = 0; // EMA-smoothed values
 
 function startGyro() {
   window.addEventListener('deviceorientation', e => {
     lastBeta = e.beta || 0;
     lastGamma = e.gamma || 0;
 
-    // Update tilt indicator
+    // Exponential moving average — smooths balance board jitter
+    smoothGamma = smoothGamma * 0.7 + lastGamma * 0.3;
+    smoothBeta = smoothBeta * 0.7 + lastBeta * 0.3;
+
+    // Update tilt indicator with smoothed values
     const dot = document.getElementById('tilt-dot');
-    const clampedGamma = Math.max(-45, Math.min(45, lastGamma));
+    const clampedGamma = Math.max(-45, Math.min(45, smoothGamma));
     const pct = 50 + (clampedGamma / 45) * 40;
     dot.style.left = pct + '%';
-    const clampedBeta = Math.max(-45, Math.min(45, lastBeta - 45));
+    const clampedBeta = Math.max(-45, Math.min(45, smoothBeta - 45));
     const pctY = 50 + (clampedBeta / 45) * 40;
     dot.style.top = pctY + '%';
   });
 
-  // Send gyro data at ~30Hz
+  // Send smoothed gyro data at ~30Hz
   gyroInterval = setInterval(() => {
     if (conn && conn.open) {
       conn.send(JSON.stringify({
         type: 'gyro',
-        beta: lastBeta,
-        gamma: lastGamma
+        beta: smoothBeta,
+        gamma: smoothGamma
       }));
     }
   }, 33);
