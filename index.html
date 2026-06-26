@@ -112,7 +112,7 @@ canvas { display: block; image-rendering: pixelated; }
 <canvas id="game"></canvas>
 <div id="score-display">SCORE: 0</div>
 <div id="keyboard-hint">Arrow keys to steer • Space to restart</div>
-<div id="version">v2.0</div>
+<div id="version">v2.1 DEBUG</div>
 
 <div id="overlay">
   <div id="qr-container">
@@ -167,6 +167,12 @@ let waveOffset = 0;
 let controllerConnected = false;
 let conn = null;
 
+// ── Debug Mode ──
+const DEBUG_MODE = true;
+let gyroLog = [];
+let lastRawGamma = 0;
+let lastRawBeta = 0;
+
 // ── Colors ──
 const OCEAN_DARK = '#0a4a7a';
 const OCEAN_MID = '#0e6aaa';
@@ -181,7 +187,14 @@ const BOARD_STRIPE = '#ff4488';
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'Space' && gameOver) restartGame();
+  if (e.code === 'Space') {
+    if (DEBUG_MODE && gameRunning) {
+      gameRunning = false;
+      downloadGyroLog();
+    } else if (gameOver) {
+      restartGame();
+    }
+  }
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
@@ -232,6 +245,9 @@ peer.on('connection', c => {
   c.on('data', raw => {
     const msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (msg.type === 'gyro') {
+      // Store raw values for debug logging
+      lastRawGamma = msg.gamma;
+      lastRawBeta = msg.beta || betaNeutral;
       // gamma → lateral force with dead zone and ±15° range
       let tilt = Math.max(-15, Math.min(15, msg.gamma));
       // Dead zone: ignore ±2° micro-wobble
@@ -497,6 +513,7 @@ function startGame() {
   surfer.x = W / 2;
   surferVx = 0;
   gyroForce = 0;
+  gyroLog = [];
   document.getElementById('game-over-overlay').style.display = 'none';
 }
 
@@ -514,6 +531,15 @@ function endGame() {
 
 function restartGame() {
   startGame();
+}
+
+function downloadGyroLog() {
+  const blob = new Blob([JSON.stringify(gyroLog, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'gyro-data-' + Date.now() + '.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ── Init foam ──
@@ -553,6 +579,11 @@ function gameLoop() {
     surfer.x += surferVx;
     // Hard clamp as safety net
     surfer.x = Math.max(10, Math.min(W - 10, surfer.x));
+
+    // Debug: log gyro data each frame
+    if (DEBUG_MODE) {
+      gyroLog.push({ t: Date.now(), gamma: lastRawGamma, beta: lastRawBeta, force: gyroForce, vx: surferVx, x: surfer.x });
+    }
 
     // Lerp scroll speed toward target (beta-modulated)
     currentSpeed += (targetSpeed - currentSpeed) * 0.05;
@@ -598,7 +629,7 @@ function gameLoop() {
         w: surfer.w - 8,
         h: surfer.h - 10
       };
-      if (checkCollision(hitbox, o)) {
+      if (!DEBUG_MODE && checkCollision(hitbox, o)) {
         endGame();
       }
     }
