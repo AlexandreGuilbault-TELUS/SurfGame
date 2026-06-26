@@ -161,7 +161,7 @@ canvas { display: block; }
 <div id="score-display">SCORE: 0</div>
 <div id="combo-display"></div>
 <div id="keyboard-hint">Arrow keys to steer &bull; Space to restart</div>
-<div id="version">v3.2</div>
+<div id="version">v3.3</div>
 <button id="back-btn" onclick="window.location.href='index.html'">&larr; MENU</button>
 
 <div id="overlay">
@@ -778,207 +778,317 @@ function updateFloatingTexts() {
 // ── Rendering ──
 
 function drawSky() {
-  const grad = ctx.createLinearGradient(0, 0, 0, 25);
+  const grad = ctx.createLinearGradient(0, 0, 0, 30);
   grad.addColorStop(0, '#87CEEB');
   grad.addColorStop(0.5, '#5BA8D0');
   grad.addColorStop(1, '#3a7898');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, 25);
+  ctx.fillRect(0, 0, W, 30);
   // Soft horizon blend into water
-  const horizGrad = ctx.createLinearGradient(0, 20, 0, 40);
+  const horizGrad = ctx.createLinearGradient(0, 24, 0, 45);
   horizGrad.addColorStop(0, 'rgba(58,120,152,0.8)');
-  horizGrad.addColorStop(1, 'rgba(8,56,88,0)');
+  horizGrad.addColorStop(1, 'rgba(11,61,91,0)');
   ctx.fillStyle = horizGrad;
-  ctx.fillRect(0, 20, W, 20);
+  ctx.fillRect(0, 24, W, 21);
 }
 
 function drawDeepWater() {
-  const baseGrad = ctx.createLinearGradient(0, 25, 0, H);
-  baseGrad.addColorStop(0, '#083858');
-  baseGrad.addColorStop(0.3, '#0a4a7a');
-  baseGrad.addColorStop(0.7, '#0c5590');
-  baseGrad.addColorStop(1, '#0a4068');
+  const baseGrad = ctx.createLinearGradient(0, 30, 0, H);
+  baseGrad.addColorStop(0, '#0B3D5B');
+  baseGrad.addColorStop(0.4, '#0E5A7E');
+  baseGrad.addColorStop(1, '#093048');
   ctx.fillStyle = baseGrad;
-  ctx.fillRect(0, 25, W, H - 25);
+  ctx.fillRect(0, 30, W, H - 30);
 
-  // Subtle shimmer strokes on flat water (left of wave trough)
-  ctx.strokeStyle = 'rgba(100,180,220,0.08)';
+  // Organic bezier ripple curves on flat water left of trough
+  ctx.strokeStyle = 'rgba(100,180,220,0.07)';
   ctx.lineWidth = 1;
-  for (let y = BOAT_BOTTOM + 20; y < OFF_WAVE_BACK; y += 16) {
+  ctx.lineCap = 'round';
+  const scroll = frameCount * 0.6;
+  for (let y = BOAT_BOTTOM + 20; y < OFF_WAVE_BACK; y += 14) {
     const leftEdge = getWaveLeftEdge(y);
     if (leftEdge < 30) continue;
+    const yOff = y + (scroll % 14);
     ctx.beginPath();
-    ctx.moveTo(5, y);
-    for (let sx = 5; sx < leftEdge - 10; sx += 20) {
-      ctx.quadraticCurveTo(sx + 10, y + Math.sin((sx + frameCount * 0.5) * 0.08) * 3, sx + 20, y);
+    ctx.moveTo(3, yOff);
+    for (let sx = 3; sx < leftEdge - 15; sx += 25) {
+      const cy1 = yOff + Math.sin(sx * 0.07 + frameCount * 0.02) * 3;
+      const cy2 = yOff + Math.cos(sx * 0.09 + frameCount * 0.025) * 2;
+      ctx.bezierCurveTo(sx + 8, cy1, sx + 17, cy2, sx + 25, yOff);
     }
     ctx.stroke();
+  }
+
+  // Sun dapple — shimmering ellipses
+  const dapT = frameCount * 0.04;
+  for (let i = 0; i < 8; i++) {
+    const dx = 15 + (i * 37 + i * i * 13) % 120;
+    const dy = BOAT_BOTTOM + 60 + (i * 53 + i * 19) % 400;
+    const leftE = getWaveLeftEdge(dy);
+    if (dx > leftE - 20) continue;
+    const alpha = 0.04 + Math.sin(dapT + i * 1.7) * 0.025;
+    ctx.fillStyle = `rgba(140,210,240,${Math.max(0, alpha)})`;
+    ctx.beginPath();
+    ctx.ellipse(dx, dy, 12 + Math.sin(dapT + i) * 4, 5 + Math.sin(dapT * 1.3 + i) * 2, 0.3 + i * 0.1, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
 function drawWaveFace() {
-  // Wave face — gradient bands following V-shape
-  for (let y = BOAT_BOTTOM; y < OFF_WAVE_BACK; y += 2) {
-    const left = getWaveLeftEdge(y);
-    const right = getWaveRightEdge(y);
-    const w = right - left;
-    if (w <= 0) continue;
-    const faceGrad = ctx.createLinearGradient(left, 0, right, 0);
-    faceGrad.addColorStop(0, '#0a4a7a');
-    faceGrad.addColorStop(0.3, '#1a7aaa');
-    faceGrad.addColorStop(0.6, '#2cb0d0');
-    faceGrad.addColorStop(0.85, '#40d8e8');
-    faceGrad.addColorStop(1, '#60f0f0');
-    ctx.fillStyle = faceGrad;
-    ctx.fillRect(left, y, w, 2);
-  }
+  const yStart = BOAT_BOTTOM;
+  const yEnd = OFF_WAVE_BACK;
 
-  // Smooth contour strokes
-  const scroll = (frameCount * 0.8) % 24;
-  ctx.strokeStyle = 'rgba(120,210,240,0.15)';
+  // Build clip path for the V-shaped wave face
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(getWaveLeftEdge(yStart), yStart);
+  for (let y = yStart; y <= yEnd; y += 4) {
+    ctx.lineTo(getWaveLeftEdge(y), y);
+  }
+  for (let y = yEnd; y >= yStart; y -= 4) {
+    ctx.lineTo(getWaveRightEdge(y), y);
+  }
+  ctx.closePath();
+  ctx.clip();
+
+  // Single horizontal gradient fill
+  const faceGrad = ctx.createLinearGradient(0, 0, W * 0.75, 0);
+  faceGrad.addColorStop(0, '#0A4D6E');
+  faceGrad.addColorStop(0.3, '#147090');
+  faceGrad.addColorStop(0.55, '#2098B8');
+  faceGrad.addColorStop(0.75, '#40C8E0');
+  faceGrad.addColorStop(1, '#70ECF0');
+  ctx.fillStyle = faceGrad;
+  ctx.fillRect(0, yStart, W, yEnd - yStart);
+
+  // Depth shading — darker near boat
+  const depthGrad = ctx.createLinearGradient(0, yStart, 0, yEnd);
+  depthGrad.addColorStop(0, 'rgba(5,30,50,0.35)');
+  depthGrad.addColorStop(0.3, 'rgba(5,30,50,0.15)');
+  depthGrad.addColorStop(0.6, 'rgba(5,30,50,0.05)');
+  depthGrad.addColorStop(1, 'rgba(5,30,50,0.2)');
+  ctx.fillStyle = depthGrad;
+  ctx.fillRect(0, yStart, W, yEnd - yStart);
+
+  // Flowing contour lines (bezier curves scrolling downward)
+  const scroll = (frameCount * 0.8) % 28;
   ctx.lineWidth = 1;
   ctx.lineCap = 'round';
-  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 24) {
+  for (let y = yStart + scroll; y < yEnd; y += 28) {
     const left = getWaveLeftEdge(y);
     const right = getWaveRightEdge(y);
+    ctx.strokeStyle = 'rgba(150,230,250,0.12)';
     ctx.beginPath();
-    ctx.moveTo(left + 10, y);
-    for (let sx = left + 10; sx < right - 10; sx += 12) {
-      const wobble = Math.sin((sx + frameCount * 0.4) * 0.06) * 2;
-      ctx.lineTo(sx + 6, y + wobble);
+    ctx.moveTo(left + 5, y);
+    for (let sx = left + 5; sx < right - 5; sx += 18) {
+      const w1 = Math.sin((sx + frameCount * 0.5) * 0.05) * 2.5;
+      const w2 = Math.cos((sx + frameCount * 0.3) * 0.07) * 1.5;
+      ctx.bezierCurveTo(sx + 6, y + w1, sx + 12, y + w2, sx + 18, y);
     }
     ctx.stroke();
-  }
-}
-
-function drawWakeLines() {
-  ctx.strokeStyle = 'rgba(100,180,220,0.1)';
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-  const scroll = (frameCount * 0.5) % 30;
-  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 30) {
-    const maxX = getWaveLeftEdge(y) - 10;
-    if (maxX < 15) continue;
-    ctx.beginPath();
-    ctx.moveTo(10, y);
-    for (let sx = 10; sx < maxX; sx += 10) {
-      ctx.quadraticCurveTo(sx + 5, y + Math.sin(sx * 0.05 + frameCount * 0.03) * 3, sx + 10, y);
+    // Secondary fainter contour
+    if (y + 12 < yEnd) {
+      ctx.strokeStyle = 'rgba(120,200,230,0.06)';
+      ctx.beginPath();
+      ctx.moveTo(left + 12, y + 12);
+      for (let sx = left + 12; sx < right - 12; sx += 22) {
+        const w1 = Math.sin((sx + frameCount * 0.4) * 0.06) * 2;
+        ctx.quadraticCurveTo(sx + 11, y + 12 + w1, sx + 22, y + 12);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
   }
-}
 
-function drawSweetSpot() {
-  const pulse = 0.12 + Math.sin(frameCount * 0.04) * 0.06;
-  for (let y = SAFE_TOP + 20; y < SAFE_BOTTOM - 20; y += 12) {
-    const center = getSweetSpotCenter(y);
-    const radius = getSweetSpotRadius(y);
-    const glow = ctx.createRadialGradient(center, y, 0, center, y, radius);
-    glow.addColorStop(0, `rgba(0,229,255,${pulse * 1.5})`);
-    glow.addColorStop(0.5, `rgba(0,229,255,${pulse * 0.8})`);
-    glow.addColorStop(1, 'rgba(0,229,255,0)');
-    ctx.fillStyle = glow;
+  // Caustic light ellipses
+  const caustT = frameCount * 0.06;
+  for (let i = 0; i < 12; i++) {
+    const cy = yStart + 40 + (i * 47) % (yEnd - yStart - 60);
+    const left = getWaveLeftEdge(cy);
+    const right = getWaveRightEdge(cy);
+    const cx = left + (right - left) * (0.3 + (i * 0.17) % 0.5);
+    const alpha = 0.06 + Math.sin(caustT + i * 2.1) * 0.04;
+    ctx.fillStyle = `rgba(180,250,255,${Math.max(0, alpha)})`;
     ctx.beginPath();
-    ctx.ellipse(center, y, radius, 6, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy + Math.sin(caustT * 1.2 + i) * 3, 10 + Math.sin(caustT + i) * 4, 4 + Math.sin(caustT * 0.8 + i) * 2, 0.2, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  ctx.restore();
 }
 
 function drawWaveWall() {
-  // Wave wall fills from getWaveRightEdge(y) to canvas right edge
   const startY = BOAT_BOTTOM;
   const endY = OFF_WAVE_BACK + 30;
 
+  // Build wall shape with barrel bulge
+  ctx.save();
   ctx.beginPath();
   ctx.moveTo(W, startY);
   for (let y = startY; y <= endY; y += 2) {
     const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    ctx.lineTo(re, y);
+    const midFactor = 1 - Math.abs((y - (startY + endY) / 2) / ((endY - startY) / 2));
+    const bulge = midFactor * midFactor * 8;
+    ctx.lineTo(re - bulge, y);
   }
   ctx.lineTo(W, endY);
   ctx.closePath();
 
-  // Horizontal gradient: bright aqua at lip → deep dark blue interior
-  const wallGrad = ctx.createLinearGradient(100, 0, W, 0);
-  wallGrad.addColorStop(0, '#40e8f0');
-  wallGrad.addColorStop(0.15, '#20b0d0');
-  wallGrad.addColorStop(0.4, '#105878');
-  wallGrad.addColorStop(0.7, '#0a3050');
-  wallGrad.addColorStop(1, '#061828');
+  // Barrel interior — deep dark fill
+  const interiorGrad = ctx.createLinearGradient(W * 0.6, 0, W, 0);
+  interiorGrad.addColorStop(0, '#0A3A55');
+  interiorGrad.addColorStop(0.5, '#062A40');
+  interiorGrad.addColorStop(1, '#031218');
+  ctx.fillStyle = interiorGrad;
+  ctx.fill();
+
+  // Wall surface layer — bright at lip, fading deeper
+  ctx.beginPath();
+  ctx.moveTo(W * 0.85, startY);
+  for (let y = startY; y <= endY; y += 2) {
+    const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
+    const midFactor = 1 - Math.abs((y - (startY + endY) / 2) / ((endY - startY) / 2));
+    const bulge = midFactor * midFactor * 8;
+    ctx.lineTo(re - bulge, y);
+  }
+  ctx.lineTo(W * 0.85, endY);
+  ctx.closePath();
+  const wallGrad = ctx.createLinearGradient(100, 0, W * 0.85, 0);
+  wallGrad.addColorStop(0, '#55E0F0');
+  wallGrad.addColorStop(0.2, '#30B0D0');
+  wallGrad.addColorStop(0.5, '#155878');
+  wallGrad.addColorStop(1, '#052030');
   ctx.fillStyle = wallGrad;
   ctx.fill();
 
-  // Vertical water streaks (subtle stroked curves)
-  ctx.strokeStyle = 'rgba(100,200,230,0.06)';
-  ctx.lineWidth = 2;
+  // Vertical flow lines — water cascading down
   ctx.lineCap = 'round';
-  for (let y = startY + 10; y < endY - 20; y += 18) {
+  for (let y = startY + 8; y < endY - 25; y += 16) {
     const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const streakX = re + 15 + Math.sin(y * 0.05) * 10;
-    if (streakX >= W) continue;
+    const streakX = re + 10 + Math.sin(y * 0.06) * 8;
+    if (streakX >= W - 3) continue;
+    ctx.strokeStyle = `rgba(100,200,230,${0.06 + Math.sin(y * 0.03 + frameCount * 0.02) * 0.02})`;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(streakX, y);
-    ctx.quadraticCurveTo(streakX + Math.sin(y * 0.08 + frameCount * 0.02) * 8, y + 25, streakX + 3, y + 50);
+    ctx.bezierCurveTo(
+      streakX + Math.sin(y * 0.08 + frameCount * 0.02) * 6, y + 15,
+      streakX - Math.sin(y * 0.06 + frameCount * 0.03) * 4, y + 35,
+      streakX + 2, y + 50
+    );
     ctx.stroke();
   }
 
-  // Deeper streaks
-  ctx.strokeStyle = 'rgba(60,140,170,0.04)';
-  ctx.lineWidth = 3;
-  for (let y = startY + 30; y < endY - 40; y += 25) {
+  // Deeper wider flow streaks
+  ctx.lineWidth = 2.5;
+  for (let y = startY + 25; y < endY - 45; y += 28) {
     const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const streakX = re + 50 + Math.sin(y * 0.07) * 15;
-    if (streakX >= W) continue;
+    const streakX = re + 40 + Math.sin(y * 0.07) * 12;
+    if (streakX >= W - 5) continue;
+    ctx.strokeStyle = `rgba(60,140,170,${0.04 + Math.sin(y * 0.04) * 0.015})`;
     ctx.beginPath();
     ctx.moveTo(streakX, y);
-    ctx.bezierCurveTo(streakX + 5, y + 20, streakX - 5, y + 40, streakX + 2, y + 60);
+    ctx.bezierCurveTo(streakX + 4, y + 20, streakX - 4, y + 40, streakX + 1, y + 60);
     ctx.stroke();
   }
 
-  // Caustic light ellipses near the lip
-  const caustT = frameCount * 0.08;
-  for (let y = startY + 20; y < endY - 30; y += 22) {
+  // Light filtering — translucent ellipses near top
+  const lightT = frameCount * 0.05;
+  for (let y = startY + 15; y < startY + (endY - startY) * 0.4; y += 20) {
     const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const cx = re + 8 + Math.sin(y * 0.12 + caustT) * 12;
-    const cy = y + Math.cos(y * 0.08 + caustT * 1.3) * 6;
-    if (cx >= W - 5) continue;
-    ctx.fillStyle = `rgba(150,240,255,${0.05 + Math.sin(caustT + y * 0.1) * 0.03})`;
+    const cx = re + 12 + Math.sin(y * 0.1 + lightT) * 10;
+    if (cx >= W - 8) continue;
+    const alpha = 0.06 + Math.sin(lightT + y * 0.08) * 0.03;
+    ctx.fillStyle = `rgba(150,240,255,${Math.max(0, alpha)})`;
     ctx.beginPath();
-    ctx.ellipse(cx, cy, 8 + Math.sin(caustT + y) * 3, 4, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(cx, y + Math.cos(y * 0.07 + lightT * 1.2) * 5, 10 + Math.sin(lightT + y) * 3, 5, 0.3, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  ctx.restore();
 }
 
 function drawLipFoam() {
-  const ft = frameCount * 0.12;
+  const ft = frameCount * 0.1;
   ctx.lineCap = 'round';
-  for (let y = BOAT_BOTTOM + 15; y < SAFE_BOTTOM + 40; y += 4) {
-    const right = getWaveRightEdge(y);
+  ctx.lineJoin = 'round';
 
-    // Smooth foam arc at lip junction
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 2 + Math.sin(y * 0.1 + ft) * 1;
+  // Pass 1: Wide soft glow
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 12;
+  ctx.beginPath();
+  let started = false;
+  for (let y = BOAT_BOTTOM + 10; y < SAFE_BOTTOM + 50; y += 6) {
+    const rx = getWaveRightEdge(y);
+    const wobble = Math.sin(y * 0.08 + ft) * 3 + Math.cos(y * 0.13 + ft * 1.3) * 2;
+    if (!started) { ctx.moveTo(rx + wobble, y); started = true; }
+    else ctx.lineTo(rx + wobble, y);
+  }
+  ctx.stroke();
+
+  // Pass 2: Narrow bright core
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  started = false;
+  for (let y = BOAT_BOTTOM + 10; y < SAFE_BOTTOM + 50; y += 4) {
+    const rx = getWaveRightEdge(y);
+    const wobble = Math.sin(y * 0.08 + ft) * 2 + Math.cos(y * 0.15 + ft * 1.2) * 1.5;
+    if (!started) { ctx.moveTo(rx + wobble, y); started = true; }
+    else ctx.lineTo(rx + wobble, y);
+  }
+  ctx.stroke();
+
+  // Pass 3: Scattered foam bubbles
+  for (let y = BOAT_BOTTOM + 12; y < SAFE_BOTTOM + 45; y += 5) {
+    const rx = getWaveRightEdge(y);
+    const scatter = Math.sin(y * 0.2 + ft * 0.8) * 6;
+    const bx = rx + scatter - 4;
+    const by = y + Math.cos(y * 0.15 + ft) * 2;
+    const alpha = 0.25 + Math.sin(y * 0.3 + ft * 1.5) * 0.15;
+    const r = 1.5 + Math.sin(y * 0.18 + ft) * 0.8;
+    ctx.fillStyle = `rgba(255,255,255,${Math.max(0.1, alpha)})`;
     ctx.beginPath();
-    ctx.arc(right + 2, y, 6 + Math.sin(y * 0.08 + ft) * 3, Math.PI * 0.3, Math.PI * 1.2);
+    ctx.arc(bx, by, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (y % 10 < 3) {
+      ctx.fillStyle = `rgba(200,245,255,${Math.max(0.08, alpha * 0.6)})`;
+      ctx.beginPath();
+      ctx.arc(bx - 6 + Math.sin(y * 0.12) * 3, by + 2, r * 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Pass 4: Spindrift droplets blown off lip
+  for (let y = BOAT_BOTTOM + 20; y < SAFE_BOTTOM + 30; y += 12) {
+    const rx = getWaveRightEdge(y);
+    const drift = Math.sin(y * 0.09 + ft * 1.5) * 4;
+    for (let d = 0; d < 3; d++) {
+      const dx = rx + 8 + d * 5 + drift + Math.sin(ft + y * 0.1 + d) * 3;
+      const dy = y + Math.cos(ft * 1.2 + d + y * 0.05) * 4;
+      if (dx >= W - 3) continue;
+      ctx.fillStyle = `rgba(255,255,255,${0.12 + Math.sin(ft + d + y * 0.1) * 0.06})`;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawWakeLines() {
+  ctx.lineCap = 'round';
+  const scroll = (frameCount * 0.5) % 26;
+  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 26) {
+    const maxX = getWaveLeftEdge(y) - 12;
+    if (maxX < 15) continue;
+    ctx.strokeStyle = 'rgba(100,180,220,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(8, y);
+    for (let sx = 8; sx < maxX; sx += 14) {
+      const cy = y + Math.sin(sx * 0.06 + frameCount * 0.025) * 3;
+      ctx.quadraticCurveTo(sx + 7, cy, sx + 14, y);
+    }
     ctx.stroke();
-
-    // Foam bubbles as small circles
-    if (y % 6 === 0) {
-      const bx = right - 5 + Math.sin(y * 0.25 + ft) * 8;
-      const by2 = y + Math.cos(y * 0.15 + ft) * 3;
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.beginPath();
-      ctx.arc(bx, by2, 2 + Math.sin(y * 0.3 + ft) * 1, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Cyan mist bubbles
-    if (y % 8 === 0) {
-      ctx.fillStyle = 'rgba(170,238,255,0.35)';
-      ctx.beginPath();
-      ctx.arc(right - 12 + Math.sin(y * 0.15 + ft) * 5, y + 1, 3, 0, Math.PI * 2);
-      ctx.fill();
-    }
   }
 }
 
@@ -987,9 +1097,31 @@ function drawBoat() {
   boatBob = bob;
   const by = 18 + bob;
 
-  // Wake V-lines (stroked curves)
-  ctx.strokeStyle = 'rgba(170,238,255,0.1)';
+  // Prop wash — churning water behind stern
+  const washGrad = ctx.createRadialGradient(200, by + 48, 2, 200, by + 55, 35);
+  washGrad.addColorStop(0, 'rgba(180,230,245,0.25)');
+  washGrad.addColorStop(0.4, 'rgba(140,210,235,0.12)');
+  washGrad.addColorStop(1, 'rgba(100,180,220,0)');
+  ctx.fillStyle = washGrad;
+  ctx.beginPath();
+  ctx.ellipse(200, by + 52, 40, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Prop wash bubbles
+  const washT = frameCount * 0.15;
+  for (let i = 0; i < 10; i++) {
+    const bx = 180 + (i * 4.3) + Math.sin(washT + i * 1.1) * 8;
+    const by2 = by + 44 + (i * 2.1) + Math.cos(washT + i * 0.9) * 5;
+    ctx.fillStyle = `rgba(200,240,255,${0.12 + Math.sin(washT + i) * 0.06})`;
+    ctx.beginPath();
+    ctx.arc(bx, by2, 1.5 + Math.sin(washT + i * 0.7) * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Wake V-lines
+  ctx.strokeStyle = 'rgba(170,238,255,0.08)';
   ctx.lineWidth = 1;
+  ctx.lineCap = 'round';
   for (let i = 0; i < 6; i++) {
     const wt = frameCount * 0.08 + i;
     ctx.beginPath();
@@ -1003,12 +1135,12 @@ function drawBoat() {
   }
 
   // Hull shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath();
-  ctx.ellipse(200, by + 30, 60, 14, 0, 0, Math.PI * 2);
+  ctx.ellipse(200, by + 30, 58, 13, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Hull — smooth curved path
+  // Hull — smooth bezier path
   ctx.fillStyle = '#2a2a3a';
   ctx.beginPath();
   ctx.moveTo(145, by + 28);
@@ -1020,8 +1152,8 @@ function drawBoat() {
   ctx.closePath();
   ctx.fill();
 
-  // Hull highlight
-  ctx.strokeStyle = '#4a4a5a';
+  // Hull highlight stripe
+  ctx.strokeStyle = 'rgba(80,80,100,0.6)';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(150, by + 18);
@@ -1066,6 +1198,22 @@ function drawBoat() {
   ctx.stroke();
 }
 
+function drawSweetSpot() {
+  const pulse = 0.12 + Math.sin(frameCount * 0.04) * 0.06;
+  for (let y = SAFE_TOP + 20; y < SAFE_BOTTOM - 20; y += 12) {
+    const center = getSweetSpotCenter(y);
+    const radius = getSweetSpotRadius(y);
+    const glow = ctx.createRadialGradient(center, y, 0, center, y, radius);
+    glow.addColorStop(0, `rgba(0,229,255,${pulse * 1.5})`);
+    glow.addColorStop(0.5, `rgba(0,229,255,${pulse * 0.8})`);
+    glow.addColorStop(1, 'rgba(0,229,255,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.ellipse(center, y, radius, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawDangerWarning() {
   if (dangerFrontTimer > 20) {
     const alpha = 0.15 + Math.sin(frameCount * 0.3) * 0.1;
@@ -1098,7 +1246,9 @@ function drawDangerWarning() {
 function drawRider() {
   const x = rider.x;
   const y = rider.y - (rider.airborne ? rider.airHeight * 12 : 0);
-  const lean = rider.vx * 0.035;
+  const lean = rider.vx * 0.04;
+  const crouch = Math.min(6, Math.abs(rider.vy) * 0.8);
+  const shoulderTilt = rider.vx * 0.5;
 
   // Shadow when airborne
   if (rider.airborne) {
@@ -1112,10 +1262,10 @@ function drawRider() {
   ctx.translate(x, y);
   ctx.rotate(gameState === STATE.FALLING ? fallRotation : lean);
 
-  const armSwing = rider.airborne ? -10
+  const armSwing = rider.airborne ? -12
     : (pumpActive ? Math.sin(frameCount * 0.15) * 8 : Math.sin(frameCount * 0.06) * 1.5);
 
-  // ═══ SURFBOARD (ellipse with perspective) ═══
+  // ═══ SURFBOARD ═══
   ctx.save();
   ctx.rotate(-0.15);
 
@@ -1125,32 +1275,48 @@ function drawRider() {
   ctx.ellipse(0, 35, 30, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Board body
-  ctx.fillStyle = '#F0F0F0';
+  // Board body — off-white
+  ctx.fillStyle = '#F2F0E8';
   ctx.beginPath();
   ctx.ellipse(0, 33, 28, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Center stripe
-  ctx.fillStyle = '#FF4488';
+  // Center stringer
+  ctx.strokeStyle = '#C8B878';
+  ctx.lineWidth = 0.8;
   ctx.beginPath();
-  ctx.ellipse(0, 33, 14, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#DD2266';
-  ctx.lineWidth = 0.5;
-  ctx.beginPath();
-  ctx.ellipse(0, 33, 14, 3, 0, 0, Math.PI * 2);
+  ctx.moveTo(0, 27);
+  ctx.lineTo(0, 39);
   ctx.stroke();
 
-  // Board rail
-  ctx.strokeStyle = '#D0D0D0';
+  // Traction pad — front
+  ctx.fillStyle = 'rgba(40,40,40,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(-8, 32, 8, 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Traction pad — rear
+  ctx.fillStyle = 'rgba(40,40,40,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(8, 34, 7, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Rail highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.ellipse(0, 33, 28, 6, 0, -Math.PI * 0.8, Math.PI * 0.1);
+  ctx.stroke();
+
+  // Board rail outline
+  ctx.strokeStyle = '#D0CEC0';
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.ellipse(0, 33, 28, 6, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Fins
-  ctx.fillStyle = '#555';
+  // 3 Fins
+  ctx.fillStyle = '#444';
   ctx.beginPath();
   ctx.ellipse(-10, 38, 3, 2, -0.3, 0, Math.PI * 2);
   ctx.fill();
@@ -1163,122 +1329,123 @@ function drawRider() {
 
   ctx.restore(); // undo board rotation
 
-  // ═══ LEGS (sideways stance — natural bezier curves) ═══
-  // Viewed from behind, surfer perpendicular to travel (regular stance)
+  // ═══ LEGS (bent knees, crouch responsive) ═══
+  const kneeDepth = 20 + crouch * 0.4;
+  const footY = 28 + crouch * 0.3;
 
   // Back leg (right, closer to viewer)
   ctx.strokeStyle = '#E8B87C';
   ctx.lineWidth = 7;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(4, 10);
-  ctx.quadraticCurveTo(6, 18, 5, 24);
-  ctx.quadraticCurveTo(5, 28, 6, 32);
+  ctx.moveTo(4, 8);
+  ctx.quadraticCurveTo(7 + crouch * 0.2, kneeDepth - 4, 5, footY);
+  ctx.quadraticCurveTo(5, footY + 2, 6, 32);
   ctx.stroke();
   // Calf shading
   ctx.strokeStyle = '#C49A64';
   ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.moveTo(5, 26);
+  ctx.moveTo(5, footY - 2);
   ctx.lineTo(6, 31);
   ctx.stroke();
 
-  // Front leg (left, further away — slightly darker)
-  ctx.strokeStyle = '#D4A670';
+  // Front leg (left, further — darker)
+  ctx.strokeStyle = '#D0A068';
   ctx.lineWidth = 6;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(-3, 10);
-  ctx.quadraticCurveTo(-5, 18, -5, 24);
-  ctx.quadraticCurveTo(-4, 28, -5, 32);
+  ctx.moveTo(-3, 8);
+  ctx.quadraticCurveTo(-6 - crouch * 0.2, kneeDepth - 4, -5, footY);
+  ctx.quadraticCurveTo(-4, footY + 2, -5, 32);
   ctx.stroke();
 
   // ═══ BOARD SHORTS ═══
-  ctx.fillStyle = '#DD4422';
+  ctx.fillStyle = '#CC3520';
   ctx.beginPath();
-  ctx.moveTo(-8, 0);
-  ctx.quadraticCurveTo(-10, 5, -8, 12);
-  ctx.lineTo(10, 12);
-  ctx.quadraticCurveTo(12, 5, 10, 0);
+  ctx.moveTo(-8, -1);
+  ctx.quadraticCurveTo(-10, 4, -8, 10);
+  ctx.lineTo(10, 10);
+  ctx.quadraticCurveTo(12, 4, 10, -1);
   ctx.closePath();
   ctx.fill();
   // Waistband
-  ctx.fillStyle = '#993316';
+  ctx.fillStyle = '#992818';
   ctx.beginPath();
-  ctx.moveTo(-8, 0);
-  ctx.quadraticCurveTo(0, -1, 10, 0);
-  ctx.quadraticCurveTo(0, 1.5, -8, 1.5);
+  ctx.moveTo(-8, -1);
+  ctx.quadraticCurveTo(0, -2, 10, -1);
+  ctx.quadraticCurveTo(0, 0.5, -8, 0.5);
   ctx.closePath();
   ctx.fill();
   // Side stripe
-  ctx.strokeStyle = '#EE6644';
+  ctx.strokeStyle = '#E8552A';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(9, 2);
-  ctx.lineTo(9, 11);
+  ctx.moveTo(9, 1);
+  ctx.lineTo(9, 9);
   ctx.stroke();
 
-  // ═══ TORSO (RASH GUARD — smooth paths) ═══
-  ctx.fillStyle = '#2266AA';
+  // ═══ TORSO (rash guard) ═══
+  ctx.fillStyle = '#1E5C99';
   ctx.beginPath();
   ctx.moveTo(-9, -18);
-  ctx.quadraticCurveTo(-12, -10, -10, 0);
-  ctx.lineTo(10, 0);
+  ctx.quadraticCurveTo(-12, -10, -10, -1);
+  ctx.lineTo(10, -1);
   ctx.quadraticCurveTo(12, -10, 9, -18);
   ctx.closePath();
   ctx.fill();
-
   // Lighter center panel
-  ctx.fillStyle = '#3388CC';
+  ctx.fillStyle = '#2878B8';
   ctx.beginPath();
   ctx.moveTo(-4, -16);
-  ctx.quadraticCurveTo(-5, -8, -4, 0);
-  ctx.lineTo(4, 0);
+  ctx.quadraticCurveTo(-5, -8, -4, -1);
+  ctx.lineTo(4, -1);
   ctx.quadraticCurveTo(5, -8, 4, -16);
   ctx.closePath();
   ctx.fill();
-
-  // Darker side panels
-  ctx.fillStyle = '#1A4E80';
+  // Dark seam accents
+  ctx.fillStyle = '#153D66';
   ctx.beginPath();
   ctx.moveTo(-9, -16);
-  ctx.quadraticCurveTo(-11, -10, -10, -2);
-  ctx.lineTo(-8, -2);
+  ctx.quadraticCurveTo(-11, -10, -10, -3);
+  ctx.lineTo(-8, -3);
   ctx.quadraticCurveTo(-9, -10, -7, -16);
   ctx.closePath();
   ctx.fill();
   ctx.beginPath();
   ctx.moveTo(9, -16);
-  ctx.quadraticCurveTo(11, -10, 10, -2);
-  ctx.lineTo(8, -2);
+  ctx.quadraticCurveTo(11, -10, 10, -3);
+  ctx.lineTo(8, -3);
   ctx.quadraticCurveTo(9, -10, 7, -16);
   ctx.closePath();
   ctx.fill();
 
-  // ═══ ARMS (thick stroked curves + circle hands) ═══
+  // ═══ ARMS ═══
+  const armSpread = rider.airborne ? 1.8 : 1;
+
   // Lead arm (right) extends toward wave
   ctx.strokeStyle = '#E8B87C';
   ctx.lineWidth = 5;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(9, -14);
-  ctx.quadraticCurveTo(18, -12 - armSwing * 0.5, 22, -6 - armSwing);
+  ctx.quadraticCurveTo(16 + shoulderTilt * 0.3, -12 - armSwing * 0.5, 20 * armSpread + shoulderTilt * 0.5, -6 - armSwing);
   ctx.stroke();
   ctx.fillStyle = '#E8B87C';
   ctx.beginPath();
-  ctx.arc(22, -6 - armSwing, 3, 0, Math.PI * 2);
+  ctx.arc(20 * armSpread + shoulderTilt * 0.5, -6 - armSwing, 3, 0, Math.PI * 2);
   ctx.fill();
 
   // Back arm (left) for balance
-  ctx.strokeStyle = '#D4A670';
+  ctx.strokeStyle = '#D0A068';
   ctx.lineWidth = 4.5;
   ctx.beginPath();
   ctx.moveTo(-9, -14);
-  ctx.quadraticCurveTo(-17, -12 + armSwing * 0.5, -20, -8 + armSwing);
+  ctx.quadraticCurveTo(-16 - shoulderTilt * 0.3, -12 + armSwing * 0.5, -18 * armSpread - shoulderTilt * 0.5, -8 + armSwing);
   ctx.stroke();
-  ctx.fillStyle = '#D4A670';
+  ctx.fillStyle = '#D0A068';
   ctx.beginPath();
-  ctx.arc(-20, -8 + armSwing, 2.5, 0, Math.PI * 2);
+  ctx.arc(-18 * armSpread - shoulderTilt * 0.5, -8 + armSwing, 2.5, 0, Math.PI * 2);
   ctx.fill();
 
   // ═══ NECK ═══
@@ -1287,24 +1454,24 @@ function drawRider() {
   ctx.ellipse(0, -20, 4, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // ═══ HEAD (turned forward, one ear visible) ═══
+  // ═══ HEAD (turned slightly forward) ═══
   ctx.fillStyle = '#E8B87C';
   ctx.beginPath();
-  ctx.ellipse(0, -29, 8, 9, 0, 0, Math.PI * 2);
+  ctx.ellipse(1, -29, 8, 9, 0, 0, Math.PI * 2);
   ctx.fill();
-
-  // Ear (right side visible since head turned forward)
-  ctx.fillStyle = '#D4A670';
+  // Ear (right side visible)
+  ctx.fillStyle = '#D0A068';
   ctx.beginPath();
-  ctx.ellipse(8, -28, 2.5, 3, 0.2, 0, Math.PI * 2);
+  ctx.ellipse(9, -28, 2.5, 3, 0.2, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#C49A64';
   ctx.beginPath();
-  ctx.ellipse(8, -28, 1.5, 2, 0.2, 0, Math.PI * 2);
+  ctx.ellipse(9, -28, 1.5, 2, 0.2, 0, Math.PI * 2);
   ctx.fill();
 
-  // ═══ HAIR (overlapping ellipses with highlights) ═══
-  ctx.fillStyle = '#8B5E3C';
+  // ═══ HAIR ═══
+  // Dark brown base
+  ctx.fillStyle = '#6B4226';
   ctx.beginPath();
   ctx.ellipse(0, -34, 9, 7, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -1314,22 +1481,20 @@ function drawRider() {
   ctx.beginPath();
   ctx.ellipse(3, -33, 7, 5, 0.15, 0, Math.PI * 2);
   ctx.fill();
-  // Top tuft
+  // Wind-blown top tuft
   ctx.beginPath();
   ctx.ellipse(1, -38, 5, 4, 0.1, 0, Math.PI * 2);
   ctx.fill();
-
-  // Highlights
-  ctx.fillStyle = '#B87D4A';
+  // Sun-bleached highlights
+  ctx.fillStyle = '#9B6A3C';
   ctx.beginPath();
   ctx.ellipse(2, -37, 3, 2.5, 0.2, 0, Math.PI * 2);
   ctx.fill();
   ctx.beginPath();
   ctx.ellipse(-4, -34, 2.5, 2, -0.3, 0, Math.PI * 2);
   ctx.fill();
-
-  // Dark edges
-  ctx.fillStyle = '#5C3A1E';
+  // Dark underside edges
+  ctx.fillStyle = '#4A2E16';
   ctx.beginPath();
   ctx.ellipse(-6, -32, 3, 3, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -1338,9 +1503,6 @@ function drawRider() {
   ctx.fill();
 
   ctx.restore();
-
-  // Board wake
-  if (!rider.airborne && gameState !== STATE.GAME_OVER) drawBoardWake(x, y);
 }
 
 function drawBoardWake(x, y) {
@@ -1348,25 +1510,34 @@ function drawBoardWake(x, y) {
   if (speed < 0.5) return;
   const intensity = Math.min(1, speed / 5);
 
-  // Curved spray arcs
-  ctx.strokeStyle = `rgba(200,240,255,${0.3 * intensity})`;
+  // Wake trail — two diverging curves
+  ctx.strokeStyle = `rgba(200,240,255,${0.25 * intensity})`;
   ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(x - 10, y + 36);
-  ctx.quadraticCurveTo(x - 18 - speed * 2, y + 30, x - 22 - speed * 3, y + 26);
+  ctx.moveTo(x - 8, y + 36);
+  ctx.quadraticCurveTo(x - 16 - speed * 2, y + 42, x - 22 - speed * 2.5, y + 48);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x + 10, y + 36);
-  ctx.quadraticCurveTo(x + 18 + speed * 2, y + 30, x + 22 + speed * 3, y + 26);
+  ctx.moveTo(x + 8, y + 36);
+  ctx.quadraticCurveTo(x + 16 + speed * 2, y + 42, x + 22 + speed * 2.5, y + 48);
   ctx.stroke();
 
+  // Spray mist at board tail
+  const mistGrad = ctx.createRadialGradient(x, y + 38, 1, x, y + 38, 12 + speed * 2);
+  mistGrad.addColorStop(0, `rgba(200,240,255,${0.2 * intensity})`);
+  mistGrad.addColorStop(1, 'rgba(200,240,255,0)');
+  ctx.fillStyle = mistGrad;
+  ctx.beginPath();
+  ctx.arc(x, y + 38, 12 + speed * 2, 0, Math.PI * 2);
+  ctx.fill();
+
   // Smooth droplets
-  for (let i = 0; i < 6 * intensity; i++) {
-    ctx.fillStyle = `rgba(200,240,255,${0.3 * intensity})`;
+  for (let i = 0; i < 5 * intensity; i++) {
+    ctx.fillStyle = `rgba(200,240,255,${0.25 * intensity})`;
     ctx.beginPath();
-    ctx.arc(x + (Math.random() - 0.5) * 30, y + 38 + Math.random() * 10,
-      1 + Math.random() * 2, 0, Math.PI * 2);
+    ctx.arc(x + (Math.random() - 0.5) * 28, y + 38 + Math.random() * 10,
+      1 + Math.random() * 1.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -1375,20 +1546,18 @@ function drawBoardWake(x, y) {
     const dir = -Math.sign(rider.vx);
     const ri = Math.min(1, (speed - 3) / 4);
 
-    // Main spray curve
-    ctx.strokeStyle = `rgba(255,255,255,${0.4 * ri})`;
+    ctx.strokeStyle = `rgba(255,255,255,${0.35 * ri})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, y + 34);
-    ctx.bezierCurveTo(x + dir * 15, y + 20, x + dir * 25, y + 15 - speed, x + dir * 35, y + 10 - speed * 1.5);
+    ctx.bezierCurveTo(x + dir * 14, y + 22, x + dir * 24, y + 16 - speed, x + dir * 34, y + 10 - speed * 1.5);
     ctx.stroke();
 
-    // Spray droplets
-    for (let i = 0; i < 8 * ri; i++) {
-      ctx.fillStyle = `rgba(255,255,255,${0.4 * ri * Math.random()})`;
+    for (let i = 0; i < 7 * ri; i++) {
+      ctx.fillStyle = `rgba(255,255,255,${0.35 * ri * Math.random()})`;
       ctx.beginPath();
-      ctx.arc(x + dir * (14 + Math.random() * 24),
-        y + 24 + Math.random() * 14 - speed, 1 + Math.random() * 2, 0, Math.PI * 2);
+      ctx.arc(x + dir * (12 + Math.random() * 22),
+        y + 24 + Math.random() * 14 - speed, 1 + Math.random() * 1.5, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -1455,11 +1624,11 @@ function gameLoop() {
   drawSky();
   drawDeepWater();
   drawWaveFace();
-  drawWakeLines();
-  drawSweetSpot();
   drawWaveWall();
   drawLipFoam();
+  drawWakeLines();
   drawBoat();
+  drawSweetSpot();
 
   if (gameState === STATE.PLAYING) {
     frameCount++;
@@ -1484,6 +1653,12 @@ function gameLoop() {
   } else if (gameState === STATE.FALLING) {
     frameCount++;
     updateFall();
+  }
+
+  // Board wake before rider so spray trail is behind
+  if (!rider.airborne && gameState !== STATE.GAME_OVER) {
+    const ry = rider.y - (rider.airborne ? rider.airHeight * 12 : 0);
+    drawBoardWake(rider.x, ry);
   }
 
   // Draw rider
