@@ -161,7 +161,7 @@ canvas { display: block; image-rendering: pixelated; }
 <div id="score-display">SCORE: 0</div>
 <div id="combo-display"></div>
 <div id="keyboard-hint">Arrow keys to steer &bull; Space to restart</div>
-<div id="version">v3.0</div>
+<div id="version">v3.1</div>
 <button id="back-btn" onclick="window.location.href='index.html'">&larr; MENU</button>
 
 <div id="overlay">
@@ -211,7 +211,7 @@ const OFF_WAVE_BACK = 620;
 const STATE = { WAITING: 0, PLAYING: 1, FALLING: 2, GAME_OVER: 3 };
 let gameState = STATE.WAITING;
 
-let rider = { x: W * 0.4, y: H * 0.5, w: 32, h: 40, vx: 0, vy: 0,
+let rider = { x: W * 0.4, y: H * 0.5, w: 60, h: 90, vx: 0, vy: 0,
               airborne: false, airTime: 0, airHeight: 0, launchSpeed: 0 };
 let score = 0;
 let frameCount = 0;
@@ -662,7 +662,7 @@ function addScore(pts, label) {
   score += pts * combo;
   floatingTexts.push({
     text: '+' + (pts * combo) + ' ' + label,
-    x: rider.x, y: rider.y - 30 - rider.airHeight * 10,
+    x: rider.x, y: rider.y - 50 - (rider.airborne ? rider.airHeight * 12 : 0),
     life: 60, color: combo > 1 ? '#ffcc00' : '#ffffff'
   });
 }
@@ -727,17 +727,17 @@ function spawnSplash(x, y, count) {
 
 function spawnCarveSpray() {
   const speed = Math.sqrt(rider.vx*rider.vx + rider.vy*rider.vy);
-  if (speed < 2 || rider.airborne) return;
-  const count = Math.min(3, Math.floor(speed / 2));
+  if (speed < 1.5 || rider.airborne) return;
+  const count = Math.min(5, Math.floor(speed / 1.5));
   for (let i = 0; i < count; i++) {
     particles.push({
-      x: rider.x - rider.vx * 2,
-      y: rider.y + 18,
-      vx: -rider.vx * 0.3 + (Math.random()-0.5)*2,
-      vy: (Math.random()-0.5)*2 + 1,
-      life: 15 + Math.random() * 10,
-      size: 1 + Math.random() * 3,
-      color: '#aaeeff'
+      x: rider.x - rider.vx * 3,
+      y: rider.y + 36,
+      vx: -rider.vx * 0.4 + (Math.random()-0.5)*3,
+      vy: (Math.random()-0.5)*2 + 1.5,
+      life: 18 + Math.random() * 12,
+      size: 2 + Math.random() * 4,
+      color: Math.random() > 0.5 ? '#ffffff' : '#aaeeff'
     });
   }
 }
@@ -774,122 +774,173 @@ function updateFloatingTexts() {
 }
 
 // ── Rendering ──
+
+// Precompute wave face gradient colors (16 strips trough→lip)
+const WAVE_COLORS = [];
+for (let i = 0; i < 16; i++) {
+  const t = i / 15;
+  const r = Math.floor(10 + t * 34);
+  const g = Math.floor(74 + t * 136);
+  const b = Math.floor(122 + t * 124);
+  WAVE_COLORS.push(`rgb(${r},${g},${b})`);
+}
+
+// fillRect shorthand used inside transformed context
+function F(rx, ry, rw, rh) {
+  ctx.fillRect(rx, ry, rw, rh);
+}
+
 function drawSky() {
-  const grad = ctx.createLinearGradient(0, 0, 0, 30);
+  const grad = ctx.createLinearGradient(0, 0, 0, 38);
   grad.addColorStop(0, '#87CEEB');
-  grad.addColorStop(1, '#4a90b8');
+  grad.addColorStop(0.6, '#5BA8D0');
+  grad.addColorStop(1, '#3a7898');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, 35);
-  // Horizon line
-  ctx.fillStyle = '#3a7090';
-  ctx.fillRect(0, 33, W, 2);
+  ctx.fillRect(0, 0, W, 38);
+  ctx.fillStyle = '#2a6888';
+  ctx.fillRect(0, 36, W, 2);
 }
 
 function drawBoat() {
   const bob = Math.sin(frameCount * 0.03) * 2;
   boatBob = bob;
-  const by = 30 + bob;
+  const by = 28 + bob;
 
+  // Wake V-lines behind boat
+  ctx.fillStyle = 'rgba(170,238,255,0.12)';
+  for (let i = 0; i < 8; i++) {
+    const wt = frameCount * 0.08 + i;
+    ctx.fillRect(150 - i * 14, by + 58 + i * 6 + Math.sin(wt) * 2, 10, 1);
+    ctx.fillRect(240 + i * 14, by + 58 + i * 6 + Math.cos(wt) * 2, 10, 1);
+  }
+  // Hull shadow
+  ctx.fillStyle = '#1a1a28';
+  ctx.fillRect(118, by + 14, 164, 32);
   // Hull
   ctx.fillStyle = '#2a2a3a';
-  ctx.fillRect(120, by + 10, 160, 30);
-  ctx.fillRect(130, by + 5, 140, 8);
-  ctx.fillRect(140, by + 40, 120, 8);
-
+  ctx.fillRect(122, by + 12, 156, 28);
+  ctx.fillRect(132, by + 6, 136, 8);
+  // Hull highlight
+  ctx.fillStyle = '#3a3a50';
+  ctx.fillRect(126, by + 12, 148, 3);
+  // Transom
+  ctx.fillRect(142, by + 40, 116, 6);
+  ctx.fillStyle = '#353548';
+  ctx.fillRect(145, by + 40, 110, 2);
   // Swim platform
   ctx.fillStyle = '#8B6914';
-  ctx.fillRect(155, by + 48, 90, 6);
+  ctx.fillRect(152, by + 46, 96, 6);
   ctx.fillStyle = '#6B4914';
-  ctx.fillRect(158, by + 48, 2, 6);
-  ctx.fillRect(178, by + 48, 2, 6);
-  ctx.fillRect(198, by + 48, 2, 6);
-  ctx.fillRect(218, by + 48, 2, 6);
-  ctx.fillRect(238, by + 48, 2, 6);
-
+  for (let px = 155; px < 245; px += 12) ctx.fillRect(px, by + 46, 2, 6);
+  ctx.fillStyle = '#5a3a08';
+  ctx.fillRect(152, by + 46, 96, 1);
   // Wake tower
-  ctx.fillStyle = '#555566';
-  ctx.fillRect(168, by - 10, 4, 20);
-  ctx.fillRect(228, by - 10, 4, 20);
-  ctx.fillRect(168, by - 12, 64, 4);
-
-  // Motors
-  ctx.fillStyle = '#888899';
-  ctx.fillRect(175, by + 42, 12, 10);
-  ctx.fillRect(213, by + 42, 12, 10);
   ctx.fillStyle = '#666677';
-  ctx.fillRect(178, by + 52, 6, 4);
-  ctx.fillRect(216, by + 52, 6, 4);
-
-  // Wake spray at waterline
-  const wt = frameCount * 0.1;
-  ctx.fillStyle = 'rgba(170,238,255,0.5)';
-  ctx.fillRect(125 + Math.sin(wt)*3, by + 42, 8, 3);
-  ctx.fillRect(265 + Math.cos(wt)*3, by + 42, 8, 3);
-  ctx.fillRect(145 + Math.sin(wt+1)*2, by + 45, 6, 2);
-  ctx.fillRect(245 + Math.cos(wt+1)*2, by + 45, 6, 2);
+  ctx.fillRect(170, by - 10, 3, 22);
+  ctx.fillRect(227, by - 10, 3, 22);
+  ctx.fillRect(170, by - 12, 60, 3);
+  ctx.fillStyle = '#888899';
+  ctx.fillRect(171, by - 11, 58, 1);
+  ctx.fillStyle = '#444455';
+  ctx.fillRect(195, by - 14, 10, 4);
+  // Motors
+  ctx.fillStyle = '#999AAA';
+  ctx.fillRect(175, by + 40, 14, 10);
+  ctx.fillRect(211, by + 40, 14, 10);
+  ctx.fillStyle = '#666677';
+  ctx.fillRect(178, by + 50, 8, 6);
+  ctx.fillRect(214, by + 50, 8, 6);
+  ctx.fillStyle = '#555566';
+  ctx.fillRect(179, by + 56, 6, 2);
+  ctx.fillRect(215, by + 56, 6, 2);
+  ctx.fillStyle = '#AAB';
+  ctx.fillRect(177, by + 40, 10, 2);
+  ctx.fillRect(213, by + 40, 10, 2);
+  // Motor spray
+  const wt = frameCount * 0.12;
+  ctx.fillStyle = 'rgba(200,240,255,0.5)';
+  ctx.fillRect(170 + Math.sin(wt) * 3, by + 52, 6, 3);
+  ctx.fillRect(228 + Math.cos(wt) * 3, by + 52, 6, 3);
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillRect(175 + Math.sin(wt + 1) * 2, by + 56, 4, 2);
+  ctx.fillRect(222 + Math.cos(wt + 1) * 2, by + 56, 4, 2);
 }
 
 function drawWater() {
-  // Flat water behind boat (left/trough area)
-  ctx.fillStyle = '#0a4a7a';
+  // Deep water base
+  const baseGrad = ctx.createLinearGradient(0, 35, 0, H);
+  baseGrad.addColorStop(0, '#083858');
+  baseGrad.addColorStop(0.5, '#0a4a7a');
+  baseGrad.addColorStop(1, '#0c5590');
+  ctx.fillStyle = baseGrad;
   ctx.fillRect(0, 35, W, H - 35);
 
-  // Wave face — gradient rising left to right
+  // Wave face — colored strips following V-shape
+  const n = WAVE_COLORS.length;
   for (let y = BOAT_BOTTOM; y < OFF_WAVE_BACK; y += 2) {
     const left = getWaveLeftEdge(y);
     const right = getWaveRightEdge(y);
-    const width = right - left;
-
-    // Draw the wave face as horizontal gradient strips
-    for (let x = left; x < right; x += 2) {
-      const t = (x - left) / width; // 0=trough, 1=lip
-      const r = Math.floor(10 + t * 20);
-      const g = Math.floor(74 + t * 130);
-      const b = Math.floor(122 + t * 100);
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      ctx.fillRect(x, y, 2, 2);
+    const w = right - left;
+    if (w <= 0) continue;
+    const sw = w / n;
+    for (let i = 0; i < n; i++) {
+      ctx.fillStyle = WAVE_COLORS[i];
+      ctx.fillRect(left + i * sw, y, sw + 1, 2);
     }
   }
 
-  // Wave contour lines (scrolling for motion feel)
-  const scroll = (frameCount * 0.8) % 20;
-  ctx.fillStyle = 'rgba(100,200,230,0.15)';
-  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 20) {
+  // Contour lines (scrolling)
+  const scroll = (frameCount * 0.8) % 24;
+  ctx.fillStyle = 'rgba(120,210,240,0.12)';
+  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 24) {
     const left = getWaveLeftEdge(y);
     const right = getWaveRightEdge(y);
-    for (let x = left + 10; x < right - 10; x += 4) {
-      const wobble = Math.sin((x + frameCount * 0.5) * 0.08) * 2;
+    for (let x = left + 8; x < right - 8; x += 4) {
+      const wobble = Math.sin((x + frameCount * 0.4) * 0.06) * 2;
       ctx.fillRect(x, y + wobble, 3, 1);
+    }
+  }
+
+  // Wave texture
+  ctx.fillStyle = 'rgba(80,180,220,0.06)';
+  for (let y = BOAT_BOTTOM + 10; y < OFF_WAVE_BACK - 10; y += 8) {
+    const left = getWaveLeftEdge(y);
+    const right = getWaveRightEdge(y);
+    const mid = (left + right) / 2;
+    for (let x = mid - 30; x < mid + 30; x += 6) {
+      ctx.fillRect(x + Math.sin(y * 0.1 + frameCount * 0.03) * 4, y, 4, 2);
     }
   }
 }
 
 function drawLipFoam() {
-  // Churning foam at right edge (lip/crest)
-  const ft = frameCount * 0.15;
-  for (let y = BOAT_BOTTOM + 20; y < SAFE_BOTTOM + 30; y += 4) {
+  const ft = frameCount * 0.12;
+  for (let y = BOAT_BOTTOM + 15; y < SAFE_BOTTOM + 40; y += 3) {
     const right = getWaveRightEdge(y);
-    const foamWidth = 15 + Math.sin(y * 0.1 + ft) * 5;
-
+    const foamWidth = 20 + Math.sin(y * 0.08 + ft) * 6;
     // White foam
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
     for (let i = 0; i < foamWidth; i += 3) {
-      const fx = right - i + Math.sin(y * 0.3 + ft + i) * 3;
-      const fs = 2 + Math.random() * 2;
-      ctx.fillRect(fx, y + Math.sin(fx*0.1+ft)*2, fs, fs);
+      const fx = right - i + Math.sin(y * 0.25 + ft + i * 0.5) * 3;
+      const fs = 2 + (Math.sin(i + ft * 3) + 1) * 1.5;
+      ctx.fillRect(fx, y + Math.sin(fx * 0.08 + ft) * 2, fs, fs);
     }
     // Cyan foam
-    ctx.fillStyle = 'rgba(170,238,255,0.5)';
-    for (let i = 0; i < foamWidth * 0.6; i += 4) {
-      const fx = right - foamWidth - i + Math.sin(y * 0.2 + ft) * 2;
-      ctx.fillRect(fx, y + 1, 2, 2);
+    ctx.fillStyle = 'rgba(170,238,255,0.45)';
+    for (let i = 0; i < foamWidth * 0.7; i += 4) {
+      const fx = right - foamWidth - i + Math.sin(y * 0.15 + ft) * 3;
+      ctx.fillRect(fx, y + 1, 3, 2);
+    }
+    // Foam bubbles
+    if (y % 9 === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fillRect(right + 2 + Math.sin(y + ft) * 3, y, 2, 2);
     }
   }
 }
 
 function drawSweetSpot() {
-  // Subtle pulsing glow on optimal zone
-  const pulse = 0.15 + Math.sin(frameCount * 0.05) * 0.08;
+  const pulse = 0.12 + Math.sin(frameCount * 0.04) * 0.06;
   ctx.fillStyle = `rgba(0,229,255,${pulse})`;
   for (let y = SAFE_TOP + 20; y < SAFE_BOTTOM - 20; y += 4) {
     const center = getSweetSpotCenter(y);
@@ -899,15 +950,14 @@ function drawSweetSpot() {
 }
 
 function drawDangerWarning() {
-  // Flash warning when in danger zones
   if (dangerFrontTimer > 20) {
     const alpha = 0.2 + Math.sin(frameCount * 0.3) * 0.15;
     ctx.fillStyle = `rgba(255,50,50,${alpha})`;
     ctx.fillRect(0, BOAT_BOTTOM, W, DANGER_FRONT - BOAT_BOTTOM);
     ctx.fillStyle = '#ff4444';
-    ctx.font = '14px "Courier New", monospace';
+    ctx.font = 'bold 14px "Courier New", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('TOO CLOSE TO BOAT!', W/2, DANGER_FRONT - 15);
+    ctx.fillText('TOO CLOSE TO BOAT!', W / 2, DANGER_FRONT - 15);
     ctx.textAlign = 'left';
   }
   if (dangerBackTimer > 20) {
@@ -915,88 +965,224 @@ function drawDangerWarning() {
     ctx.fillStyle = `rgba(255,50,50,${alpha})`;
     ctx.fillRect(0, SAFE_BOTTOM, W, DANGER_BACK - SAFE_BOTTOM);
     ctx.fillStyle = '#ff4444';
-    ctx.font = '14px "Courier New", monospace';
+    ctx.font = 'bold 14px "Courier New", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('FALLING BEHIND!', W/2, SAFE_BOTTOM + 30);
+    ctx.fillText('FALLING BEHIND!', W / 2, SAFE_BOTTOM + 30);
     ctx.textAlign = 'left';
   }
 }
 
 function drawRider() {
   const x = rider.x;
-  const y = rider.y - (rider.airborne ? rider.airHeight * 10 : 0);
-  const leanAngle = rider.vx * 0.04;
+  const y = rider.y - (rider.airborne ? rider.airHeight * 12 : 0);
+  const lean = rider.vx * 0.035;
+
+  // Shadow when airborne
+  if (rider.airborne) {
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(rider.x, rider.y + 10, 28, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.save();
   ctx.translate(x, y);
+  ctx.rotate(gameState === STATE.FALLING ? fallRotation : lean);
 
-  if (gameState === STATE.FALLING) {
-    ctx.rotate(fallRotation);
-  } else {
-    ctx.rotate(leanAngle);
-  }
+  // ═══ SURFBOARD ═══
+  ctx.fillStyle = '#F0F0F0';
+  F(-18, 26, 36, 2);
+  F(-22, 28, 44, 2);
+  F(-26, 30, 52, 2);
+  F(-28, 32, 56, 2);
+  F(-28, 34, 56, 2);
+  F(-26, 36, 52, 2);
+  F(-22, 38, 44, 2);
+  F(-18, 40, 36, 2);
+  F(-14, 42, 28, 2);
+  // Rails
+  ctx.fillStyle = '#D0D0D0';
+  F(-28, 32, 3, 4); F(25, 32, 3, 4);
+  F(-26, 30, 2, 2); F(24, 30, 2, 2);
+  F(-26, 36, 2, 2); F(24, 36, 2, 2);
+  // Center stripe
+  ctx.fillStyle = '#FF4488';
+  F(-5, 28, 10, 2); F(-6, 30, 12, 2);
+  F(-6, 32, 12, 2); F(-6, 34, 12, 2);
+  F(-5, 36, 10, 2); F(-4, 38, 8, 2);
+  F(-3, 40, 6, 2);
+  // Stripe outline
+  ctx.fillStyle = '#DD2266';
+  F(-6, 30, 1, 8); F(5, 30, 1, 8);
+  // Deck grip
+  ctx.fillStyle = '#2a2a2a';
+  F(-14, 26, 8, 2); F(6, 26, 8, 2);
+  // Stringer
+  ctx.fillStyle = '#DDD';
+  F(-1, 26, 2, 18);
+  // Fins
+  ctx.fillStyle = '#555';
+  F(-10, 42, 4, 3); F(6, 42, 4, 3); F(-2, 43, 4, 3);
 
-  const cx = -rider.w / 2;
-  const cy = -rider.h / 2;
+  // ═══ LEGS ═══
+  ctx.fillStyle = '#E8B87C';
+  F(-9, 12, 8, 2); F(-9, 14, 8, 2); F(-9, 16, 8, 2);
+  F(-9, 18, 8, 2); F(-9, 20, 8, 2); F(-9, 22, 8, 2); F(-9, 24, 8, 2);
+  F(1, 12, 8, 2); F(1, 14, 8, 2); F(1, 16, 8, 2);
+  F(1, 18, 8, 2); F(1, 20, 8, 2); F(1, 22, 8, 2); F(1, 24, 8, 2);
+  // Calf shading
+  ctx.fillStyle = '#C49A64';
+  F(-9, 20, 4, 6); F(5, 20, 4, 6);
+  // Knee highlights
+  ctx.fillStyle = '#F0C890';
+  F(-7, 14, 4, 2); F(3, 14, 4, 2);
 
-  // Shadow on water when airborne
-  if (rider.airborne) {
-    ctx.restore();
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.fillRect(rider.x - 14, rider.y + 8, 28, 6);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(leanAngle);
-  }
+  // ═══ BOARD SHORTS ═══
+  ctx.fillStyle = '#DD4422';
+  F(-12, 0, 24, 2); F(-12, 2, 24, 2); F(-12, 4, 24, 2);
+  F(-11, 6, 22, 2); F(-11, 8, 22, 2); F(-10, 10, 20, 2);
+  // Waistband
+  ctx.fillStyle = '#993316';
+  F(-12, 0, 24, 2);
+  // Drawstring
+  ctx.fillStyle = '#eee';
+  F(-2, 0, 4, 2);
+  // Side stripes
+  ctx.fillStyle = '#EE6644';
+  F(-12, 2, 3, 8); F(9, 2, 3, 8);
+  // Pocket
+  ctx.fillStyle = '#CC3A1A';
+  F(4, 4, 4, 4);
+  // Center crease
+  ctx.fillStyle = '#BB3318';
+  F(-1, 6, 2, 6);
 
-  // Board (from behind — horizontal bar under feet)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(cx - 4, cy + 28, 40, 8);
-  ctx.fillRect(cx, cy + 26, 32, 2);
-  ctx.fillRect(cx + 4, cy + 36, 24, 3);
-  ctx.fillRect(cx + 8, cy + 39, 16, 2);
-  // Board stripe
-  ctx.fillStyle = '#ff4488';
-  ctx.fillRect(cx + 10, cy + 28, 12, 8);
+  // ═══ TORSO (RASH GUARD) ═══
+  ctx.fillStyle = '#2266AA';
+  F(-11, -18, 22, 2); F(-13, -16, 26, 2);
+  F(-14, -14, 28, 2); F(-14, -12, 28, 2);
+  F(-14, -10, 28, 2); F(-14, -8, 28, 2);
+  F(-13, -6, 26, 2); F(-13, -4, 26, 2); F(-12, -2, 24, 2);
+  // Center panel
+  ctx.fillStyle = '#3388CC';
+  F(-7, -16, 14, 2); F(-7, -14, 14, 2);
+  F(-7, -12, 14, 2); F(-6, -10, 12, 2); F(-6, -8, 12, 2);
+  // Side panels
+  ctx.fillStyle = '#1A4E80';
+  F(-14, -14, 3, 8); F(11, -14, 3, 8);
+  // Center seam
+  ctx.fillStyle = '#194D7F';
+  F(-1, -16, 2, 16);
+  // Hem
+  F(-12, -2, 24, 1);
+  // Logo
+  ctx.fillStyle = '#44AADD';
+  F(-3, -14, 6, 4);
 
-  // Hair (from behind)
+  // ═══ ARMS ═══
+  const armSwing = rider.airborne ? -10
+    : (pumpActive ? Math.sin(frameCount * 0.15) * 8 : Math.sin(frameCount * 0.06) * 1.5);
+  // Left arm
+  ctx.fillStyle = '#E8B87C';
+  F(-18, -16 + armSwing, 4, 2); F(-20, -14 + armSwing, 5, 2);
+  F(-21, -12 + armSwing, 5, 2); F(-22, -10 + armSwing, 5, 2);
+  F(-23, -8 + armSwing, 5, 2); F(-23, -6 + armSwing, 4, 2);
+  F(-23, -4 + armSwing, 4, 2); F(-23, -2 + armSwing, 3, 3);
+  ctx.fillStyle = '#C49A64';
+  F(-22, -8 + armSwing, 2, 6);
+  // Right arm
+  ctx.fillStyle = '#E8B87C';
+  F(14, -16 - armSwing, 4, 2); F(15, -14 - armSwing, 5, 2);
+  F(16, -12 - armSwing, 5, 2); F(17, -10 - armSwing, 5, 2);
+  F(18, -8 - armSwing, 5, 2); F(19, -6 - armSwing, 4, 2);
+  F(19, -4 - armSwing, 4, 2); F(20, -2 - armSwing, 3, 3);
+  ctx.fillStyle = '#C49A64';
+  F(20, -8 - armSwing, 2, 6);
+
+  // ═══ NECK ═══
+  ctx.fillStyle = '#E8B87C';
+  F(-4, -22, 8, 2); F(-5, -20, 10, 2);
+  ctx.fillStyle = '#C49A64';
+  F(-3, -20, 6, 2);
+
+  // ═══ HEAD ═══
+  ctx.fillStyle = '#E8B87C';
+  F(-8, -32, 16, 2); F(-9, -30, 18, 2);
+  F(-9, -28, 18, 2); F(-8, -26, 16, 2); F(-7, -24, 14, 2);
+  // Ears
+  ctx.fillStyle = '#D4A670';
+  F(-10, -30, 2, 4); F(8, -30, 2, 4);
+  ctx.fillStyle = '#C49A64';
+  F(-10, -29, 1, 2); F(9, -29, 1, 2);
+
+  // ═══ HAIR ═══
   ctx.fillStyle = '#8B5E3C';
-  ctx.fillRect(cx + 8, cy, 16, 6);
-  ctx.fillRect(cx + 6, cy + 2, 20, 3);
-
-  // Head
-  ctx.fillStyle = '#ffcc66';
-  ctx.fillRect(cx + 10, cy + 5, 12, 8);
-
-  // Torso (blue rash guard from behind)
-  ctx.fillStyle = '#2266aa';
-  ctx.fillRect(cx + 8, cy + 13, 16, 10);
-
-  // Board shorts
-  ctx.fillStyle = '#ee5533';
-  ctx.fillRect(cx + 8, cy + 23, 16, 5);
-
-  // Arms — move with carving
-  ctx.fillStyle = '#ffcc66';
-  const armOffset = rider.airborne ? -4 : Math.sin(frameCount * 0.1) * (pumpActive ? 3 : 1);
-  ctx.fillRect(cx + 2, cy + 14 + armOffset, 6, 4); // left arm
-  ctx.fillRect(cx + 24, cy + 14 - armOffset, 6, 4); // right arm
-
-  // Legs
-  ctx.fillStyle = '#ffcc66';
-  ctx.fillRect(cx + 10, cy + 28, 5, 2);
-  ctx.fillRect(cx + 17, cy + 28, 5, 2);
+  F(-7, -44, 14, 2); F(-9, -42, 18, 2);
+  F(-10, -40, 20, 2); F(-11, -38, 22, 2);
+  F(-10, -36, 20, 2); F(-9, -34, 18, 2);
+  // Highlights
+  ctx.fillStyle = '#B87D4A';
+  F(-3, -44, 8, 2); F(-5, -42, 6, 2);
+  F(3, -40, 6, 2); F(-7, -38, 4, 2); F(5, -38, 4, 2);
+  // Dark edges
+  ctx.fillStyle = '#5C3A1E';
+  F(-11, -38, 3, 4); F(8, -38, 3, 4);
+  F(-10, -36, 2, 2); F(8, -36, 2, 2);
+  // Messy tips
+  ctx.fillStyle = '#7A4E30';
+  F(-12, -38, 2, 2); F(10, -40, 2, 2);
+  F(-8, -44, 2, 2); F(6, -44, 2, 2);
 
   ctx.restore();
+
+  // Board wake
+  if (!rider.airborne && gameState !== STATE.GAME_OVER) drawBoardWake(x, y);
+}
+
+function drawBoardWake(x, y) {
+  const speed = Math.sqrt(rider.vx * rider.vx + rider.vy * rider.vy);
+  if (speed < 0.5) return;
+  const intensity = Math.min(1, speed / 5);
+
+  // Tail spray
+  ctx.fillStyle = `rgba(200,240,255,${0.3 * intensity})`;
+  for (let i = 0; i < 6 * intensity; i++) {
+    ctx.fillRect(x + (Math.random() - 0.5) * 30, y + 38 + Math.random() * 10,
+      2 + Math.random() * 3, 2);
+  }
+
+  // Rooster tail on hard carves
+  if (speed > 3) {
+    const dir = -Math.sign(rider.vx);
+    const ri = Math.min(1, (speed - 3) / 4);
+    ctx.fillStyle = `rgba(255,255,255,${0.5 * ri})`;
+    for (let i = 0; i < 10 * ri; i++) {
+      const rs = 2 + Math.random() * 3;
+      ctx.fillRect(x + dir * (14 + Math.random() * 20),
+        y + 28 + Math.random() * 14 - speed, rs, rs);
+    }
+    ctx.fillStyle = `rgba(170,238,255,${0.4 * ri})`;
+    for (let i = 0; i < 6 * ri; i++) {
+      ctx.fillRect(x + dir * (20 + Math.random() * 16),
+        y + 20 + Math.random() * 16 - speed * 1.5, 2, 2);
+    }
+  }
+
+  // Rail spray
+  if (speed > 1.5) {
+    const t = frameCount * 0.2;
+    ctx.fillStyle = `rgba(200,240,255,${0.25 * intensity})`;
+    ctx.fillRect(x - 28 + Math.sin(t) * 2, y + 32, 3, 2);
+    ctx.fillRect(x + 25 + Math.cos(t) * 2, y + 32, 3, 2);
+  }
 }
 
 function drawWakeLines() {
-  // Subtle wake lines in flat water
-  ctx.fillStyle = 'rgba(100,180,220,0.1)';
+  ctx.fillStyle = 'rgba(100,180,220,0.08)';
   const scroll = (frameCount * 0.5) % 30;
   for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 30) {
     for (let x = 10; x < getWaveLeftEdge(y) - 5; x += 8) {
-      ctx.fillRect(x, y + Math.sin(x*0.05)*2, 6, 1);
+      ctx.fillRect(x, y + Math.sin(x * 0.05) * 2, 6, 1);
     }
   }
 }
