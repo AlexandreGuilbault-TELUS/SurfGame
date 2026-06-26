@@ -9,12 +9,12 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  background: #0a1628;
+  background: #061a2e;
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
-  font-family: 'Courier New', monospace;
+  font-family: 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
 }
 canvas { display: block; }
@@ -42,6 +42,7 @@ canvas { display: block; }
   margin-bottom: 12px;
   text-transform: uppercase;
   letter-spacing: 2px;
+  font-family: 'Courier New', monospace;
 }
 #qr-container p {
   color: #88ccdd;
@@ -53,57 +54,89 @@ canvas { display: block; }
   color: #ffcc00;
   font-size: 14px;
   margin-top: 8px;
+  font-family: 'Courier New', monospace;
+}
+#hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  z-index: 5;
+  pointer-events: none;
+}
+#hud-left, #hud-right {
+  display: flex;
+  flex-direction: column;
 }
 #score-display {
-  position: absolute;
-  top: 16px;
-  right: 24px;
   color: #fff;
-  font-size: 24px;
-  text-shadow: 2px 2px 0 #000;
-  z-index: 5;
+  font-size: 22px;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.7);
 }
 #combo-display {
-  position: absolute;
-  top: 46px;
-  right: 24px;
-  color: #ffcc00;
+  color: #ffd700;
+  font-size: 14px;
+  font-weight: 600;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.7);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+#trick-display {
+  color: #00e5ff;
   font-size: 16px;
-  text-shadow: 2px 2px 0 #000;
-  z-index: 5;
-  display: none;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  opacity: 0;
+  transition: opacity 0.3s;
+  text-align: right;
+}
+#time-display {
+  color: rgba(255,255,255,0.7);
+  font-size: 13px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 #game-over-overlay {
   display: none;
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.75);
   flex-direction: column;
   justify-content: center;
   align-items: center;
   z-index: 20;
+  backdrop-filter: blur(4px);
 }
 #game-over-overlay h1 {
   color: #ff4444;
-  font-size: 48px;
-  text-shadow: 3px 3px 0 #000;
-  margin-bottom: 12px;
+  font-size: 42px;
+  font-weight: 800;
+  text-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  margin-bottom: 8px;
 }
 #game-over-overlay p {
   color: #fff;
-  font-size: 24px;
+  font-size: 22px;
 }
 #game-over-overlay .sub {
   color: #88ccdd;
-  font-size: 16px;
-  margin-top: 8px;
+  font-size: 14px;
+  margin-top: 6px;
+}
+#game-over-overlay .stats {
+  color: #aaddee;
+  font-size: 13px;
+  margin-top: 12px;
+  line-height: 1.6;
 }
 #keyboard-hint {
   position: absolute;
   bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
-  color: #556;
+  color: rgba(255,255,255,0.3);
   font-size: 12px;
   z-index: 5;
 }
@@ -111,80 +144,49 @@ canvas { display: block; }
   position: fixed;
   bottom: 4px;
   right: 8px;
-  color: #556;
+  color: rgba(255,255,255,0.2);
   font-size: 10px;
   z-index: 50;
   pointer-events: none;
-}
-#back-btn {
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  color: #556;
-  font-size: 12px;
-  z-index: 50;
-  cursor: pointer;
-  background: none;
-  border: 1px solid #334;
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-family: 'Courier New', monospace;
-}
-#back-btn:hover { color: #00e5ff; border-color: #00e5ff; }
-#mode-selector {
-  display: none;
-  flex-direction: row;
-  gap: 12px;
-  margin-top: 16px;
-  justify-content: center;
-}
-#mode-selector button {
-  background: rgba(0,0,0,0.85);
-  color: #00e5ff;
-  border: 2px solid #00e5ff;
-  border-radius: 8px;
-  padding: 10px 28px;
-  font-family: 'Courier New', monospace;
-  font-size: 16px;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-#mode-selector button:hover {
-  background: rgba(0,229,255,0.15);
 }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="score-display">SCORE: 0</div>
-<div id="combo-display"></div>
-<div id="keyboard-hint">Arrow keys to steer &bull; Space to restart</div>
-<div id="version">v3.3</div>
-<button id="back-btn" onclick="window.location.href='index.html'">&larr; MENU</button>
+
+<div id="hud">
+  <div id="hud-left">
+    <div id="score-display">0</div>
+    <div id="combo-display"></div>
+  </div>
+  <div id="hud-right">
+    <div id="trick-display"></div>
+    <div id="time-display"></div>
+  </div>
+</div>
 
 <div id="overlay">
   <div id="qr-container">
     <h2>Scan to Connect Controller</h2>
     <div id="qr-box"></div>
     <p id="status">Initializing...</p>
-    <div id="mode-selector">
-      <button id="btn-play" onclick="selectMode()">PLAY</button>
-    </div>
   </div>
 </div>
 
 <div id="game-over-overlay">
   <h1>WIPEOUT!</h1>
-  <p id="final-score">Score: 0</p>
-  <p class="sub" id="ride-time">Ride time: 0s</p>
-  <p class="sub" id="best-combo">Best combo: x1</p>
+  <p id="final-score">0</p>
   <p class="sub" id="restart-hint">Press SPACE or tap phone to restart</p>
+  <div class="stats" id="stats-display"></div>
 </div>
 
+<div id="keyboard-hint">Arrow keys to steer &bull; Up/Down to pump &bull; Space to restart</div>
+<div id="version">v4.0</div>
+
 <script>
-// ── Canvas Setup ──
+// ══════════════════════════════════════════════
+//  CANVAS SETUP
+// ══════════════════════════════════════════════
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const W = 400, H = 700;
@@ -199,84 +201,119 @@ function fitCanvas() {
 fitCanvas();
 window.addEventListener('resize', fitCanvas);
 
-// ── Game Constants ──
-const BOAT_BOTTOM = 80;
-const DANGER_FRONT = 140;
-const SAFE_TOP = 160;
-const SAFE_BOTTOM = 530;
-const DANGER_BACK = 580;
-const OFF_WAVE_BACK = 620;
+// ══════════════════════════════════════════════
+//  GAME CONSTANTS
+// ══════════════════════════════════════════════
+const WAVE_CENTER_X = W * 0.48;
+const WAVE_WIDTH_BASE = 160;
+const BOAT_Y = 60;
+const SURFER_START_Y = H * 0.62;
 
-// ── Game State ──
-const STATE = { WAITING: 0, PLAYING: 1, FALLING: 2, GAME_OVER: 3 };
-let gameState = STATE.WAITING;
+// Wake geometry
+const WAKE_ORIGIN_X = W * 0.5;
+const WAKE_ORIGIN_Y = BOAT_Y + 40;
 
-let rider = { x: W * 0.4, y: H * 0.5, w: 60, h: 90, vx: 0, vy: 0,
-              airborne: false, airTime: 0, airHeight: 0, launchSpeed: 0 };
+// Physics
+const GRAVITY = 0.3;
+const DRAG = 0.94;
+const GYRO_RANGE = 10;
+const DEAD_ZONE = 1.2;
+const GAMMA_BIAS = 0;
+const BETA_BIAS = 1.3;
+const BETA_NEUTRAL = 0;
+const MAX_VEL = 6;
+const WAVE_PUSH = 0.08;
+const PUMP_FREQ_MIN = 0.75;
+const PUMP_FREQ_MAX = 1.5;
+const PUMP_BOOST = 0.4;
+
+// Scoring
+const POINTS_PER_FRAME = 1;
+const SWEET_SPOT_BONUS = 3;
+const CARVE_BONUS = 5;
+const AIR_BONUS = 200;
+const LAND_BONUS = 150;
+const COMBO_DECAY_TIME = 2000;
+
+// ══════════════════════════════════════════════
+//  GAME STATE
+// ══════════════════════════════════════════════
+let gameState = 'waiting'; // waiting, riding, airborne, wipeout, gameover
+let gameRunning = false;
+
+// Surfer physics
+let surfer = {
+  x: WAVE_CENTER_X,
+  y: SURFER_START_Y,
+  vx: 0,
+  vy: 0,
+  speed: 0,         // accumulated speed from pumping
+  rotation: 0,      // body lean angle
+  kneeCompress: 0,  // 0=standing, 1=crouched
+  armSpread: 0.5,   // 0=tight, 1=wide
+  boardAngle: 0,
+  onWave: true,
+  airTime: 0,
+  airStartY: 0,
+  airVx: 0,
+  airVy: 0,
+};
+
+// Wave parameters
+let waveWidth = WAVE_WIDTH_BASE;
+let sweetSpotWidth = 60;
+let turbulence = 0;
+let waveNarrowRate = 0;
+let scrollY = 0;
+let scrollSpeed = 3;
+let difficulty = 0;
+let difficultyTimer = 0;
+
+// Scoring
 let score = 0;
-let frameCount = 0;
-let rideStartTime = 0;
 let combo = 1;
 let comboTimer = 0;
 let bestCombo = 1;
-let floatingTexts = [];
-let particles = [];
-let foamParticles = [];
+let trickText = '';
+let trickTimer = 0;
+let rideTime = 0;
+let totalAirs = 0;
+let totalCarves = 0;
 
-// Wave / difficulty
-let waveNarrowFactor = 1.0;
-let sweetSpotSize = 1.0;
-let turbulenceLevel = 0;
-let wavePushForce = 0.04;
-let difficultyLevel = 1;
-let difficultyTimer = 0;
-let rogueWaveTimer = 0;
-let rogueWaveActive = false;
-
-// Gyro input
-let gyroGamma = 0;    // left-right
-let gyroBeta = 0;     // fore-aft
-let prevSensorGamma = 0, lastSensorGamma = 0;
-let prevSensorBeta = 0, lastSensorBeta = 0;
+// Gyro input (from controller)
+let lastSensorGamma = 0, lastSensorBeta = 0;
+let prevSensorGamma = 0, prevSensorBeta = 0;
 let sensorTimestamp = 0;
-let sensorInterval = 33; // ~30Hz from controller
+let inputGamma = 0, inputBeta = 0;
 
 // Pump detection
 let betaHistory = [];
-let pumpActive = false;
-let pumpBoost = 0;
+let pumpCooldown = 0;
+let lastPumpTime = 0;
+let pumpCount = 0;
 
-// Fall
-let fallType = '';
-let fallTimer = 0;
-let fallRotation = 0;
-let fallVx = 0, fallVy = 0;
-let dangerFrontTimer = 0;
-let dangerBackTimer = 0;
-let offWaveTimer = 0;
-
-// Carve detection
-let lastCarveDir = 0;
-let carveSpeed = 0;
-let carveDuration = 0;
-
-// Boat bob
-let boatBob = 0;
+// Visual state
+let waterTime = 0;
+let particles = [];
+let sprayParticles = [];
+let foamTrail = [];
+let ripples = [];
 
 // Connection
 let controllerConnected = false;
 let conn = null;
-let gameRunning = false;
 
-// ── Keyboard ──
+// Keyboard
 const keys = {};
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
-  if (e.code === 'Space' && gameState === STATE.GAME_OVER) restartGame();
+  if (e.code === 'Space' && gameState === 'gameover') restartGame();
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
-// ── PeerJS ──
+// ══════════════════════════════════════════════
+//  PEERJS NETWORKING (preserved from original)
+// ══════════════════════════════════════════════
 const peer = new Peer(null, {
   config: {
     iceServers: [
@@ -310,8 +347,9 @@ peer.on('connection', c => {
   c.on('open', () => {
     c.send(JSON.stringify({ type: 'connected' }));
     setTimeout(() => {
+      document.getElementById('overlay').style.display = 'none';
       document.getElementById('keyboard-hint').style.display = 'none';
-      document.getElementById('mode-selector').style.display = 'flex';
+      startGame();
     }, 800);
   });
 
@@ -324,7 +362,7 @@ peer.on('connection', c => {
       lastSensorBeta = msg.beta;
       sensorTimestamp = performance.now();
     } else if (msg.type === 'restart') {
-      if (gameState === STATE.GAME_OVER) restartGame();
+      if (gameState === 'gameover') restartGame();
     }
   });
 
@@ -336,7 +374,7 @@ peer.on('connection', c => {
   });
 });
 
-// Show keyboard hint after delay
+// Keyboard fallback start
 setTimeout(() => {
   if (!controllerConnected) {
     document.getElementById('overlay').style.opacity = '0.6';
@@ -344,1270 +382,71 @@ setTimeout(() => {
 }, 3000);
 
 window.addEventListener('keydown', e => {
-  if (!controllerConnected && gameState === STATE.WAITING &&
+  if (!controllerConnected && gameState === 'waiting' &&
       (e.code === 'ArrowLeft' || e.code === 'ArrowRight')) {
-    document.getElementById('mode-selector').style.display = 'flex';
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('keyboard-hint').style.display = 'none';
+    startGame();
   }
 });
 
-// ── Mode Selection ──
-function selectMode() {
-  document.getElementById('overlay').style.display = 'none';
-  document.getElementById('keyboard-hint').style.display = 'none';
-  startGame();
-}
-
-// ── Wave Geometry ──
-function getWaveLeftEdge(y) {
-  const progress = Math.max(0, (y - BOAT_BOTTOM) / (SAFE_BOTTOM - BOAT_BOTTOM));
-  const narrow = rogueWaveActive ? waveNarrowFactor * 0.6 : waveNarrowFactor;
-  return 50 + (1 - progress) * 40 * narrow;
-}
-
-function getWaveRightEdge(y) {
-  const progress = Math.max(0, (y - BOAT_BOTTOM) / (SAFE_BOTTOM - BOAT_BOTTOM));
-  const narrow = rogueWaveActive ? waveNarrowFactor * 0.6 : waveNarrowFactor;
-  return 140 + progress * 220 * narrow;
-}
-
-function getSweetSpotCenter(y) {
-  const left = getWaveLeftEdge(y);
-  const right = getWaveRightEdge(y);
-  return left + (right - left) * 0.55;
-}
-
-function getSweetSpotRadius(y) {
-  const left = getWaveLeftEdge(y);
-  const right = getWaveRightEdge(y);
-  return (right - left) * 0.2 * sweetSpotSize;
-}
-
-function isInSweetSpot(x, y) {
-  const center = getSweetSpotCenter(y);
-  const radius = getSweetSpotRadius(y);
-  return Math.abs(x - center) < radius && y > SAFE_TOP && y < SAFE_BOTTOM;
-}
-
-function isOnWave(x, y) {
-  if (y < DANGER_FRONT || y > DANGER_BACK) return false;
-  const left = getWaveLeftEdge(y);
-  const right = getWaveRightEdge(y);
-  return x > left && x < right;
-}
-
-function isInDangerZone(x, y) {
-  if (y < DANGER_FRONT && y > BOAT_BOTTOM) return 'front';
-  if (y > SAFE_BOTTOM && y < OFF_WAVE_BACK) return 'back';
-  const left = getWaveLeftEdge(y);
-  const right = getWaveRightEdge(y);
-  if (x < left + 15 || x > right - 15) return 'edge';
-  return false;
-}
-
-// ── Gyro Processing (improved) ──
-function processGyro(dt) {
-  let gamma, beta;
-
-  if (controllerConnected) {
-    // Interpolate between sensor readings for smooth 60fps
-    const elapsed = performance.now() - sensorTimestamp;
-    const t = Math.min(1.5, elapsed / sensorInterval);
-    gamma = lastSensorGamma + (lastSensorGamma - prevSensorGamma) * (t - 1) * 0.6;
-    beta = lastSensorBeta + (lastSensorBeta - prevSensorBeta) * (t - 1) * 0.6;
-
-    // Bias compensation
-    gamma += 1.3;
-    beta -= 1.3;
-  } else {
-    // Keyboard fallback
-    gamma = 0; beta = 0;
-    if (keys['ArrowLeft']) gamma = -6;
-    if (keys['ArrowRight']) gamma = 6;
-    if (keys['ArrowUp']) beta = -4;
-    if (keys['ArrowDown']) beta = 4;
-  }
-
-  // Dead zone ±1°
-  if (Math.abs(gamma) < 1) gamma = 0;
-  else gamma = gamma - Math.sign(gamma) * 1;
-
-  if (Math.abs(beta) < 1) beta = 0;
-  else beta = beta - Math.sign(beta) * 1;
-
-  // Clamp to ±8° range
-  gamma = Math.max(-8, Math.min(8, gamma));
-  beta = Math.max(-8, Math.min(8, beta));
-
-  // Normalize to -1..1
-  gyroGamma = gamma / 7; // after dead zone subtraction, max is 7
-  gyroBeta = beta / 7;
-
-  // Fall detection: rapid beta plunge
-  if (controllerConnected) {
-    const betaRate = Math.abs(lastSensorBeta - prevSensorBeta);
-    if (betaRate > 10) {
-      triggerFall('flail');
-      return;
-    }
-    // Extreme tilt
-    if (Math.abs(lastSensorGamma) > 25 || Math.abs(lastSensorBeta) > 25) {
-      triggerFall('flail');
-      return;
-    }
-  }
-}
-
-// ── Pump Detection ──
-function detectPump() {
-  betaHistory.push({ val: gyroBeta, t: performance.now() });
-  // Keep 2 second window
-  const cutoff = performance.now() - 2000;
-  while (betaHistory.length > 0 && betaHistory[0].t < cutoff) betaHistory.shift();
-
-  if (betaHistory.length < 6) { pumpActive = false; return; }
-
-  // Count zero crossings
-  let crossings = 0;
-  for (let i = 1; i < betaHistory.length; i++) {
-    if ((betaHistory[i].val > 0) !== (betaHistory[i-1].val > 0)) crossings++;
-  }
-
-  // 3-6 crossings in 2s = valid pump (0.75-1.5 Hz)
-  if (crossings >= 3 && crossings <= 6) {
-    // Check amplitude
-    let maxVal = 0;
-    for (const b of betaHistory) maxVal = Math.max(maxVal, Math.abs(b.val));
-    if (maxVal > 0.25) { // ~2° after normalization
-      pumpActive = true;
-      pumpBoost = Math.min(pumpBoost + 0.02, 1.5);
-      return;
-    }
-  }
-  pumpActive = false;
-  pumpBoost = Math.max(0, pumpBoost - 0.01);
-}
-
-// ── Physics ──
-function updatePhysics(dt) {
-  if (rider.airborne) {
-    // Parabolic arc
-    rider.airTime += dt;
-    rider.airHeight -= 3 * dt; // gravity
-    rider.vy = 0;
-    rider.x += rider.vx * 0.5;
-    // Land when airHeight <= 0
-    if (rider.airHeight <= 0) {
-      rider.airborne = false;
-      rider.airHeight = 0;
-      // Landing score
-      const airScore = Math.round(rider.launchSpeed * 10 + rider.airTime * 30);
-      addScore(airScore, 'AIR!');
-      addScore(50, 'CLEAN LAND');
-      spawnSplash(rider.x, rider.y, 8);
-      rider.airTime = 0;
-    }
-    return;
-  }
-
-  // Lateral force from gamma
-  const lateralForce = gyroGamma * 0.4;
-  rider.vx += lateralForce;
-
-  // Vertical force from beta + wave push
-  const verticalForce = gyroBeta * 0.35;
-  rider.vy += verticalForce;
-  rider.vy -= wavePushForce; // wave pushes rider toward boat (negative y)
-
-  // Pump boost — extra forward resistance (counteract wave push)
-  if (pumpActive) {
-    rider.vy += 0.06;
-  }
-
-  // Speed bonus dropping from lip to trough (right to left, high x to low x)
-  const waveCenter = getSweetSpotCenter(rider.y);
-  const waveRight = getWaveRightEdge(rider.y);
-  if (rider.vx < -1 && rider.x > waveCenter) {
-    // Carving left from high on face — speed bonus
-    carveSpeed = Math.abs(rider.vx);
-    carveDuration++;
-    const carveDir = -1;
-    if (lastCarveDir !== carveDir && lastCarveDir !== 0 && carveDuration > 10) {
-      // Direction change = completed carve
-      const carveScore = Math.round(carveSpeed * carveDuration * 0.1);
-      if (carveScore > 5) addScore(carveScore, 'CARVE');
-      carveDuration = 0;
-    }
-    lastCarveDir = carveDir;
-  } else if (rider.vx > 1 && rider.x < waveCenter) {
-    carveSpeed = Math.abs(rider.vx);
-    carveDuration++;
-    const carveDir = 1;
-    if (lastCarveDir !== carveDir && lastCarveDir !== 0 && carveDuration > 10) {
-      const carveScore = Math.round(carveSpeed * carveDuration * 0.1);
-      if (carveScore > 5) addScore(carveScore, 'CARVE');
-      carveDuration = 0;
-    }
-    lastCarveDir = carveDir;
-  } else {
-    carveDuration = 0;
-  }
-
-  // Turbulence
-  if (turbulenceLevel > 0) {
-    rider.vx += (Math.random() - 0.5) * turbulenceLevel * 0.15;
-    rider.vy += (Math.random() - 0.5) * turbulenceLevel * 0.1;
-  }
-
-  // Drag
-  rider.vx *= 0.96;
-  rider.vy *= 0.94;
-
-  // Clamp velocity
-  rider.vx = Math.max(-8, Math.min(8, rider.vx));
-  rider.vy = Math.max(-6, Math.min(6, rider.vy));
-
-  // Edge springs — wave boundaries
-  const leftEdge = getWaveLeftEdge(rider.y);
-  const rightEdge = getWaveRightEdge(rider.y);
-
-  if (rider.x < leftEdge + 20) {
-    rider.vx += (leftEdge + 20 - rider.x) * 0.12;
-  }
-  if (rider.x > rightEdge - 20) {
-    rider.vx -= (rider.x - (rightEdge - 20)) * 0.12;
-  }
-  // Vertical edges
-  if (rider.y < SAFE_TOP) {
-    rider.vy += (SAFE_TOP - rider.y) * 0.08;
-  }
-  if (rider.y > SAFE_BOTTOM) {
-    rider.vy -= (rider.y - SAFE_BOTTOM) * 0.08;
-  }
-
-  // Apply velocity
-  rider.x += rider.vx;
-  rider.y += rider.vy;
-
-  // Air launch — near lip with enough rightward speed
-  if (rider.x > rightEdge - 30 && rider.vx > 3 && !rider.airborne) {
-    rider.airborne = true;
-    rider.airTime = 0;
-    rider.airHeight = 3 + Math.abs(rider.vx) * 0.8;
-    rider.launchSpeed = Math.abs(rider.vx);
-    comboHit();
-  }
-
-  // Check danger zones
-  const danger = isInDangerZone(rider.x, rider.y);
-  if (danger === 'front') {
-    dangerFrontTimer++;
-    if (dangerFrontTimer > 90) triggerFall('boat_crash'); // 1.5s at 60fps
-  } else {
-    dangerFrontTimer = Math.max(0, dangerFrontTimer - 2);
-  }
-
-  if (danger === 'back') {
-    dangerBackTimer++;
-    if (dangerBackTimer > 90) triggerFall('off_wave');
-  } else {
-    dangerBackTimer = Math.max(0, dangerBackTimer - 2);
-  }
-
-  // Off wave bounds
-  if (!isOnWave(rider.x, rider.y) && rider.y > DANGER_FRONT && rider.y < OFF_WAVE_BACK) {
-    offWaveTimer++;
-    if (offWaveTimer > 30) triggerFall('over_lip'); // 0.5s
-  } else {
-    offWaveTimer = Math.max(0, offWaveTimer - 2);
-  }
-
-  // Hard off-screen
-  if (rider.y < BOAT_BOTTOM) triggerFall('boat_crash');
-  if (rider.y > OFF_WAVE_BACK) triggerFall('off_wave');
-  if (rider.x < 10 || rider.x > W - 10) triggerFall('over_lip');
-}
-
-// ── Fall ──
-function triggerFall(type) {
-  if (gameState !== STATE.PLAYING) return;
-  gameState = STATE.FALLING;
-  fallType = type;
-  fallTimer = 60; // 1 second
-  fallRotation = 0;
-  fallVx = rider.vx;
-  fallVy = rider.vy;
-  if (type === 'boat_crash') { fallVy = -4; fallVx = (Math.random()-0.5)*3; }
-  if (type === 'over_lip') { fallVx = 3; fallVy = 2; }
-  if (type === 'off_wave') { fallVy = 3; fallVx = (Math.random()-0.5)*2; }
-  spawnSplash(rider.x, rider.y, 15);
-}
-
-function updateFall() {
-  fallTimer--;
-  fallRotation += 0.15;
-  rider.x += fallVx * 0.5;
-  rider.y += fallVy * 0.5;
-  fallVy += 0.1;
-  // Spawn splash particles during fall
-  if (fallTimer % 5 === 0) spawnSplash(rider.x, rider.y, 3);
-  if (fallTimer <= 0) {
-    spawnSplash(rider.x, rider.y, 20); // big final splash
-    gameState = STATE.GAME_OVER;
-    showGameOver();
-  }
-}
-
-// ── Scoring ──
-function addScore(pts, label) {
-  score += pts * combo;
-  floatingTexts.push({
-    text: '+' + (pts * combo) + ' ' + label,
-    x: rider.x, y: rider.y - 50 - (rider.airborne ? rider.airHeight * 12 : 0),
-    life: 60, color: combo > 1 ? '#ffcc00' : '#ffffff'
-  });
-}
-
-function comboHit() {
-  combo++;
-  comboTimer = 120; // 2s to keep combo
-  if (combo > bestCombo) bestCombo = combo;
-}
-
-function updateCombo() {
-  if (comboTimer > 0) {
-    comboTimer--;
-    if (comboTimer <= 0) combo = 1;
-  }
-  const el = document.getElementById('combo-display');
-  if (combo > 1) {
-    el.style.display = 'block';
-    el.textContent = 'x' + combo + ' COMBO';
-  } else {
-    el.style.display = 'none';
-  }
-}
-
-// ── Difficulty ──
-function updateDifficulty() {
-  difficultyTimer++;
-  if (difficultyTimer % 1800 === 0) { // every ~30s
-    difficultyLevel++;
-    waveNarrowFactor = Math.max(0.5, waveNarrowFactor - 0.08);
-    sweetSpotSize = Math.max(0.4, sweetSpotSize - 0.1);
-    turbulenceLevel = Math.min(3, turbulenceLevel + 0.5);
-    wavePushForce = Math.min(0.12, wavePushForce + 0.012);
-  }
-  // Rogue waves at level 5+
-  if (difficultyLevel >= 5) {
-    rogueWaveTimer++;
-    if (!rogueWaveActive && rogueWaveTimer > 600 && Math.random() < 0.003) {
-      rogueWaveActive = true;
-      rogueWaveTimer = 0;
-    }
-    if (rogueWaveActive && rogueWaveTimer > 180) { // 3s rogue wave
-      rogueWaveActive = false;
-      rogueWaveTimer = 0;
-    }
-  }
-}
-
-// ── Particles ──
-function spawnSplash(x, y, count) {
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x, y,
-      vx: (Math.random() - 0.5) * 6,
-      vy: (Math.random() - 0.5) * 6,
-      life: 25 + Math.random() * 20,
-      size: 2 + Math.random() * 4,
-      color: Math.random() > 0.4 ? '#ffffff' : '#aaeeff'
-    });
-  }
-}
-
-function spawnCarveSpray() {
-  const speed = Math.sqrt(rider.vx*rider.vx + rider.vy*rider.vy);
-  if (speed < 1.5 || rider.airborne) return;
-  const count = Math.min(5, Math.floor(speed / 1.5));
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x: rider.x - rider.vx * 3,
-      y: rider.y + 36,
-      vx: -rider.vx * 0.4 + (Math.random()-0.5)*3,
-      vy: (Math.random()-0.5)*2 + 1.5,
-      life: 18 + Math.random() * 12,
-      size: 2 + Math.random() * 4,
-      color: Math.random() > 0.5 ? '#ffffff' : '#aaeeff'
-    });
-  }
-}
-
-function updateParticles() {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.05;
-    p.life--;
-    if (p.life <= 0) { particles.splice(i, 1); continue; }
-    ctx.globalAlpha = p.life / 40;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size / 2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-function updateFloatingTexts() {
-  for (let i = floatingTexts.length - 1; i >= 0; i--) {
-    const ft = floatingTexts[i];
-    ft.y -= 1;
-    ft.life--;
-    if (ft.life <= 0) { floatingTexts.splice(i, 1); continue; }
-    ctx.globalAlpha = ft.life / 60;
-    ctx.fillStyle = ft.color;
-    ctx.font = '12px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(ft.text, ft.x, ft.y);
-  }
-  ctx.globalAlpha = 1;
-  ctx.textAlign = 'left';
-}
-
-// ── Rendering ──
-
-function drawSky() {
-  const grad = ctx.createLinearGradient(0, 0, 0, 30);
-  grad.addColorStop(0, '#87CEEB');
-  grad.addColorStop(0.5, '#5BA8D0');
-  grad.addColorStop(1, '#3a7898');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, 30);
-  // Soft horizon blend into water
-  const horizGrad = ctx.createLinearGradient(0, 24, 0, 45);
-  horizGrad.addColorStop(0, 'rgba(58,120,152,0.8)');
-  horizGrad.addColorStop(1, 'rgba(11,61,91,0)');
-  ctx.fillStyle = horizGrad;
-  ctx.fillRect(0, 24, W, 21);
-}
-
-function drawDeepWater() {
-  const baseGrad = ctx.createLinearGradient(0, 30, 0, H);
-  baseGrad.addColorStop(0, '#0B3D5B');
-  baseGrad.addColorStop(0.4, '#0E5A7E');
-  baseGrad.addColorStop(1, '#093048');
-  ctx.fillStyle = baseGrad;
-  ctx.fillRect(0, 30, W, H - 30);
-
-  // Organic bezier ripple curves on flat water left of trough
-  ctx.strokeStyle = 'rgba(100,180,220,0.07)';
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-  const scroll = frameCount * 0.6;
-  for (let y = BOAT_BOTTOM + 20; y < OFF_WAVE_BACK; y += 14) {
-    const leftEdge = getWaveLeftEdge(y);
-    if (leftEdge < 30) continue;
-    const yOff = y + (scroll % 14);
-    ctx.beginPath();
-    ctx.moveTo(3, yOff);
-    for (let sx = 3; sx < leftEdge - 15; sx += 25) {
-      const cy1 = yOff + Math.sin(sx * 0.07 + frameCount * 0.02) * 3;
-      const cy2 = yOff + Math.cos(sx * 0.09 + frameCount * 0.025) * 2;
-      ctx.bezierCurveTo(sx + 8, cy1, sx + 17, cy2, sx + 25, yOff);
-    }
-    ctx.stroke();
-  }
-
-  // Sun dapple — shimmering ellipses
-  const dapT = frameCount * 0.04;
-  for (let i = 0; i < 8; i++) {
-    const dx = 15 + (i * 37 + i * i * 13) % 120;
-    const dy = BOAT_BOTTOM + 60 + (i * 53 + i * 19) % 400;
-    const leftE = getWaveLeftEdge(dy);
-    if (dx > leftE - 20) continue;
-    const alpha = 0.04 + Math.sin(dapT + i * 1.7) * 0.025;
-    ctx.fillStyle = `rgba(140,210,240,${Math.max(0, alpha)})`;
-    ctx.beginPath();
-    ctx.ellipse(dx, dy, 12 + Math.sin(dapT + i) * 4, 5 + Math.sin(dapT * 1.3 + i) * 2, 0.3 + i * 0.1, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawWaveFace() {
-  const yStart = BOAT_BOTTOM;
-  const yEnd = OFF_WAVE_BACK;
-
-  // Build clip path for the V-shaped wave face
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(getWaveLeftEdge(yStart), yStart);
-  for (let y = yStart; y <= yEnd; y += 4) {
-    ctx.lineTo(getWaveLeftEdge(y), y);
-  }
-  for (let y = yEnd; y >= yStart; y -= 4) {
-    ctx.lineTo(getWaveRightEdge(y), y);
-  }
-  ctx.closePath();
-  ctx.clip();
-
-  // Single horizontal gradient fill
-  const faceGrad = ctx.createLinearGradient(0, 0, W * 0.75, 0);
-  faceGrad.addColorStop(0, '#0A4D6E');
-  faceGrad.addColorStop(0.3, '#147090');
-  faceGrad.addColorStop(0.55, '#2098B8');
-  faceGrad.addColorStop(0.75, '#40C8E0');
-  faceGrad.addColorStop(1, '#70ECF0');
-  ctx.fillStyle = faceGrad;
-  ctx.fillRect(0, yStart, W, yEnd - yStart);
-
-  // Depth shading — darker near boat
-  const depthGrad = ctx.createLinearGradient(0, yStart, 0, yEnd);
-  depthGrad.addColorStop(0, 'rgba(5,30,50,0.35)');
-  depthGrad.addColorStop(0.3, 'rgba(5,30,50,0.15)');
-  depthGrad.addColorStop(0.6, 'rgba(5,30,50,0.05)');
-  depthGrad.addColorStop(1, 'rgba(5,30,50,0.2)');
-  ctx.fillStyle = depthGrad;
-  ctx.fillRect(0, yStart, W, yEnd - yStart);
-
-  // Flowing contour lines (bezier curves scrolling downward)
-  const scroll = (frameCount * 0.8) % 28;
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-  for (let y = yStart + scroll; y < yEnd; y += 28) {
-    const left = getWaveLeftEdge(y);
-    const right = getWaveRightEdge(y);
-    ctx.strokeStyle = 'rgba(150,230,250,0.12)';
-    ctx.beginPath();
-    ctx.moveTo(left + 5, y);
-    for (let sx = left + 5; sx < right - 5; sx += 18) {
-      const w1 = Math.sin((sx + frameCount * 0.5) * 0.05) * 2.5;
-      const w2 = Math.cos((sx + frameCount * 0.3) * 0.07) * 1.5;
-      ctx.bezierCurveTo(sx + 6, y + w1, sx + 12, y + w2, sx + 18, y);
-    }
-    ctx.stroke();
-    // Secondary fainter contour
-    if (y + 12 < yEnd) {
-      ctx.strokeStyle = 'rgba(120,200,230,0.06)';
-      ctx.beginPath();
-      ctx.moveTo(left + 12, y + 12);
-      for (let sx = left + 12; sx < right - 12; sx += 22) {
-        const w1 = Math.sin((sx + frameCount * 0.4) * 0.06) * 2;
-        ctx.quadraticCurveTo(sx + 11, y + 12 + w1, sx + 22, y + 12);
-      }
-      ctx.stroke();
-    }
-  }
-
-  // Caustic light ellipses
-  const caustT = frameCount * 0.06;
-  for (let i = 0; i < 12; i++) {
-    const cy = yStart + 40 + (i * 47) % (yEnd - yStart - 60);
-    const left = getWaveLeftEdge(cy);
-    const right = getWaveRightEdge(cy);
-    const cx = left + (right - left) * (0.3 + (i * 0.17) % 0.5);
-    const alpha = 0.06 + Math.sin(caustT + i * 2.1) * 0.04;
-    ctx.fillStyle = `rgba(180,250,255,${Math.max(0, alpha)})`;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + Math.sin(caustT * 1.2 + i) * 3, 10 + Math.sin(caustT + i) * 4, 4 + Math.sin(caustT * 0.8 + i) * 2, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
-}
-
-function drawWaveWall() {
-  const startY = BOAT_BOTTOM;
-  const endY = OFF_WAVE_BACK + 30;
-
-  // Build wall shape with barrel bulge
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(W, startY);
-  for (let y = startY; y <= endY; y += 2) {
-    const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const midFactor = 1 - Math.abs((y - (startY + endY) / 2) / ((endY - startY) / 2));
-    const bulge = midFactor * midFactor * 8;
-    ctx.lineTo(re - bulge, y);
-  }
-  ctx.lineTo(W, endY);
-  ctx.closePath();
-
-  // Barrel interior — deep dark fill
-  const interiorGrad = ctx.createLinearGradient(W * 0.6, 0, W, 0);
-  interiorGrad.addColorStop(0, '#0A3A55');
-  interiorGrad.addColorStop(0.5, '#062A40');
-  interiorGrad.addColorStop(1, '#031218');
-  ctx.fillStyle = interiorGrad;
-  ctx.fill();
-
-  // Wall surface layer — bright at lip, fading deeper
-  ctx.beginPath();
-  ctx.moveTo(W * 0.85, startY);
-  for (let y = startY; y <= endY; y += 2) {
-    const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const midFactor = 1 - Math.abs((y - (startY + endY) / 2) / ((endY - startY) / 2));
-    const bulge = midFactor * midFactor * 8;
-    ctx.lineTo(re - bulge, y);
-  }
-  ctx.lineTo(W * 0.85, endY);
-  ctx.closePath();
-  const wallGrad = ctx.createLinearGradient(100, 0, W * 0.85, 0);
-  wallGrad.addColorStop(0, '#55E0F0');
-  wallGrad.addColorStop(0.2, '#30B0D0');
-  wallGrad.addColorStop(0.5, '#155878');
-  wallGrad.addColorStop(1, '#052030');
-  ctx.fillStyle = wallGrad;
-  ctx.fill();
-
-  // Vertical flow lines — water cascading down
-  ctx.lineCap = 'round';
-  for (let y = startY + 8; y < endY - 25; y += 16) {
-    const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const streakX = re + 10 + Math.sin(y * 0.06) * 8;
-    if (streakX >= W - 3) continue;
-    ctx.strokeStyle = `rgba(100,200,230,${0.06 + Math.sin(y * 0.03 + frameCount * 0.02) * 0.02})`;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(streakX, y);
-    ctx.bezierCurveTo(
-      streakX + Math.sin(y * 0.08 + frameCount * 0.02) * 6, y + 15,
-      streakX - Math.sin(y * 0.06 + frameCount * 0.03) * 4, y + 35,
-      streakX + 2, y + 50
-    );
-    ctx.stroke();
-  }
-
-  // Deeper wider flow streaks
-  ctx.lineWidth = 2.5;
-  for (let y = startY + 25; y < endY - 45; y += 28) {
-    const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const streakX = re + 40 + Math.sin(y * 0.07) * 12;
-    if (streakX >= W - 5) continue;
-    ctx.strokeStyle = `rgba(60,140,170,${0.04 + Math.sin(y * 0.04) * 0.015})`;
-    ctx.beginPath();
-    ctx.moveTo(streakX, y);
-    ctx.bezierCurveTo(streakX + 4, y + 20, streakX - 4, y + 40, streakX + 1, y + 60);
-    ctx.stroke();
-  }
-
-  // Light filtering — translucent ellipses near top
-  const lightT = frameCount * 0.05;
-  for (let y = startY + 15; y < startY + (endY - startY) * 0.4; y += 20) {
-    const re = getWaveRightEdge(Math.min(y, OFF_WAVE_BACK));
-    const cx = re + 12 + Math.sin(y * 0.1 + lightT) * 10;
-    if (cx >= W - 8) continue;
-    const alpha = 0.06 + Math.sin(lightT + y * 0.08) * 0.03;
-    ctx.fillStyle = `rgba(150,240,255,${Math.max(0, alpha)})`;
-    ctx.beginPath();
-    ctx.ellipse(cx, y + Math.cos(y * 0.07 + lightT * 1.2) * 5, 10 + Math.sin(lightT + y) * 3, 5, 0.3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.restore();
-}
-
-function drawLipFoam() {
-  const ft = frameCount * 0.1;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  // Pass 1: Wide soft glow
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth = 12;
-  ctx.beginPath();
-  let started = false;
-  for (let y = BOAT_BOTTOM + 10; y < SAFE_BOTTOM + 50; y += 6) {
-    const rx = getWaveRightEdge(y);
-    const wobble = Math.sin(y * 0.08 + ft) * 3 + Math.cos(y * 0.13 + ft * 1.3) * 2;
-    if (!started) { ctx.moveTo(rx + wobble, y); started = true; }
-    else ctx.lineTo(rx + wobble, y);
-  }
-  ctx.stroke();
-
-  // Pass 2: Narrow bright core
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  started = false;
-  for (let y = BOAT_BOTTOM + 10; y < SAFE_BOTTOM + 50; y += 4) {
-    const rx = getWaveRightEdge(y);
-    const wobble = Math.sin(y * 0.08 + ft) * 2 + Math.cos(y * 0.15 + ft * 1.2) * 1.5;
-    if (!started) { ctx.moveTo(rx + wobble, y); started = true; }
-    else ctx.lineTo(rx + wobble, y);
-  }
-  ctx.stroke();
-
-  // Pass 3: Scattered foam bubbles
-  for (let y = BOAT_BOTTOM + 12; y < SAFE_BOTTOM + 45; y += 5) {
-    const rx = getWaveRightEdge(y);
-    const scatter = Math.sin(y * 0.2 + ft * 0.8) * 6;
-    const bx = rx + scatter - 4;
-    const by = y + Math.cos(y * 0.15 + ft) * 2;
-    const alpha = 0.25 + Math.sin(y * 0.3 + ft * 1.5) * 0.15;
-    const r = 1.5 + Math.sin(y * 0.18 + ft) * 0.8;
-    ctx.fillStyle = `rgba(255,255,255,${Math.max(0.1, alpha)})`;
-    ctx.beginPath();
-    ctx.arc(bx, by, r, 0, Math.PI * 2);
-    ctx.fill();
-    if (y % 10 < 3) {
-      ctx.fillStyle = `rgba(200,245,255,${Math.max(0.08, alpha * 0.6)})`;
-      ctx.beginPath();
-      ctx.arc(bx - 6 + Math.sin(y * 0.12) * 3, by + 2, r * 0.7, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Pass 4: Spindrift droplets blown off lip
-  for (let y = BOAT_BOTTOM + 20; y < SAFE_BOTTOM + 30; y += 12) {
-    const rx = getWaveRightEdge(y);
-    const drift = Math.sin(y * 0.09 + ft * 1.5) * 4;
-    for (let d = 0; d < 3; d++) {
-      const dx = rx + 8 + d * 5 + drift + Math.sin(ft + y * 0.1 + d) * 3;
-      const dy = y + Math.cos(ft * 1.2 + d + y * 0.05) * 4;
-      if (dx >= W - 3) continue;
-      ctx.fillStyle = `rgba(255,255,255,${0.12 + Math.sin(ft + d + y * 0.1) * 0.06})`;
-      ctx.beginPath();
-      ctx.arc(dx, dy, 1.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-function drawWakeLines() {
-  ctx.lineCap = 'round';
-  const scroll = (frameCount * 0.5) % 26;
-  for (let y = BOAT_BOTTOM + scroll; y < OFF_WAVE_BACK; y += 26) {
-    const maxX = getWaveLeftEdge(y) - 12;
-    if (maxX < 15) continue;
-    ctx.strokeStyle = 'rgba(100,180,220,0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(8, y);
-    for (let sx = 8; sx < maxX; sx += 14) {
-      const cy = y + Math.sin(sx * 0.06 + frameCount * 0.025) * 3;
-      ctx.quadraticCurveTo(sx + 7, cy, sx + 14, y);
-    }
-    ctx.stroke();
-  }
-}
-
-function drawBoat() {
-  const bob = Math.sin(frameCount * 0.03) * 2;
-  boatBob = bob;
-  const by = 18 + bob;
-
-  // Prop wash — churning water behind stern
-  const washGrad = ctx.createRadialGradient(200, by + 48, 2, 200, by + 55, 35);
-  washGrad.addColorStop(0, 'rgba(180,230,245,0.25)');
-  washGrad.addColorStop(0.4, 'rgba(140,210,235,0.12)');
-  washGrad.addColorStop(1, 'rgba(100,180,220,0)');
-  ctx.fillStyle = washGrad;
-  ctx.beginPath();
-  ctx.ellipse(200, by + 52, 40, 18, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Prop wash bubbles
-  const washT = frameCount * 0.15;
-  for (let i = 0; i < 10; i++) {
-    const bx = 180 + (i * 4.3) + Math.sin(washT + i * 1.1) * 8;
-    const by2 = by + 44 + (i * 2.1) + Math.cos(washT + i * 0.9) * 5;
-    ctx.fillStyle = `rgba(200,240,255,${0.12 + Math.sin(washT + i) * 0.06})`;
-    ctx.beginPath();
-    ctx.arc(bx, by2, 1.5 + Math.sin(washT + i * 0.7) * 0.8, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Wake V-lines
-  ctx.strokeStyle = 'rgba(170,238,255,0.08)';
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-  for (let i = 0; i < 6; i++) {
-    const wt = frameCount * 0.08 + i;
-    ctx.beginPath();
-    ctx.moveTo(170, by + 40);
-    ctx.quadraticCurveTo(170 - i * 12, by + 46 + i * 5, 170 - i * 18, by + 52 + i * 8 + Math.sin(wt) * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(230, by + 40);
-    ctx.quadraticCurveTo(230 + i * 12, by + 46 + i * 5, 230 + i * 18, by + 52 + i * 8 + Math.cos(wt) * 2);
-    ctx.stroke();
-  }
-
-  // Hull shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.beginPath();
-  ctx.ellipse(200, by + 30, 58, 13, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Hull — smooth bezier path
-  ctx.fillStyle = '#2a2a3a';
-  ctx.beginPath();
-  ctx.moveTo(145, by + 28);
-  ctx.quadraticCurveTo(145, by + 10, 175, by + 6);
-  ctx.lineTo(225, by + 6);
-  ctx.quadraticCurveTo(255, by + 10, 255, by + 28);
-  ctx.lineTo(250, by + 32);
-  ctx.quadraticCurveTo(200, by + 36, 150, by + 32);
-  ctx.closePath();
-  ctx.fill();
-
-  // Hull highlight stripe
-  ctx.strokeStyle = 'rgba(80,80,100,0.6)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(150, by + 18);
-  ctx.quadraticCurveTo(200, by + 14, 250, by + 18);
-  ctx.stroke();
-
-  // Transom
-  ctx.fillStyle = '#353548';
-  ctx.beginPath();
-  ctx.moveTo(155, by + 30);
-  ctx.quadraticCurveTo(200, by + 36, 245, by + 30);
-  ctx.lineTo(245, by + 34);
-  ctx.quadraticCurveTo(200, by + 40, 155, by + 34);
-  ctx.closePath();
-  ctx.fill();
-
-  // Swim platform
-  ctx.fillStyle = '#8B6914';
-  ctx.beginPath();
-  ctx.moveTo(165, by + 36);
-  ctx.quadraticCurveTo(200, by + 42, 235, by + 36);
-  ctx.lineTo(235, by + 40);
-  ctx.quadraticCurveTo(200, by + 46, 165, by + 40);
-  ctx.closePath();
-  ctx.fill();
-
-  // Wake tower (stroked)
-  ctx.strokeStyle = '#777788';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(175, by + 12);
-  ctx.lineTo(178, by - 6);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(225, by + 12);
-  ctx.lineTo(222, by - 6);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(178, by - 6);
-  ctx.quadraticCurveTo(200, by - 10, 222, by - 6);
-  ctx.stroke();
-}
-
-function drawSweetSpot() {
-  const pulse = 0.12 + Math.sin(frameCount * 0.04) * 0.06;
-  for (let y = SAFE_TOP + 20; y < SAFE_BOTTOM - 20; y += 12) {
-    const center = getSweetSpotCenter(y);
-    const radius = getSweetSpotRadius(y);
-    const glow = ctx.createRadialGradient(center, y, 0, center, y, radius);
-    glow.addColorStop(0, `rgba(0,229,255,${pulse * 1.5})`);
-    glow.addColorStop(0.5, `rgba(0,229,255,${pulse * 0.8})`);
-    glow.addColorStop(1, 'rgba(0,229,255,0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.ellipse(center, y, radius, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-function drawDangerWarning() {
-  if (dangerFrontTimer > 20) {
-    const alpha = 0.15 + Math.sin(frameCount * 0.3) * 0.1;
-    const dGrad = ctx.createLinearGradient(0, BOAT_BOTTOM, 0, DANGER_FRONT);
-    dGrad.addColorStop(0, `rgba(255,50,50,${alpha * 1.5})`);
-    dGrad.addColorStop(1, 'rgba(255,50,50,0)');
-    ctx.fillStyle = dGrad;
-    ctx.fillRect(0, BOAT_BOTTOM, W, DANGER_FRONT - BOAT_BOTTOM);
-    ctx.fillStyle = '#ff4444';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('TOO CLOSE TO BOAT!', W / 2, DANGER_FRONT - 15);
-    ctx.textAlign = 'left';
-  }
-  if (dangerBackTimer > 20) {
-    const alpha = 0.15 + Math.sin(frameCount * 0.3) * 0.1;
-    const dGrad = ctx.createLinearGradient(0, SAFE_BOTTOM, 0, DANGER_BACK);
-    dGrad.addColorStop(0, 'rgba(255,50,50,0)');
-    dGrad.addColorStop(1, `rgba(255,50,50,${alpha * 1.5})`);
-    ctx.fillStyle = dGrad;
-    ctx.fillRect(0, SAFE_BOTTOM, W, DANGER_BACK - SAFE_BOTTOM);
-    ctx.fillStyle = '#ff4444';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('FALLING BEHIND!', W / 2, SAFE_BOTTOM + 30);
-    ctx.textAlign = 'left';
-  }
-}
-
-function drawRider() {
-  const x = rider.x;
-  const y = rider.y - (rider.airborne ? rider.airHeight * 12 : 0);
-  const lean = rider.vx * 0.04;
-  const crouch = Math.min(6, Math.abs(rider.vy) * 0.8);
-  const shoulderTilt = rider.vx * 0.5;
-
-  // Shadow when airborne
-  if (rider.airborne) {
-    ctx.fillStyle = 'rgba(0,0,0,0.2)';
-    ctx.beginPath();
-    ctx.ellipse(rider.x, rider.y + 10, 28, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(gameState === STATE.FALLING ? fallRotation : lean);
-
-  const armSwing = rider.airborne ? -12
-    : (pumpActive ? Math.sin(frameCount * 0.15) * 8 : Math.sin(frameCount * 0.06) * 1.5);
-
-  // ═══ SURFBOARD ═══
-  ctx.save();
-  ctx.rotate(-0.15);
-
-  // Board shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  ctx.beginPath();
-  ctx.ellipse(0, 35, 30, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Board body — off-white
-  ctx.fillStyle = '#F2F0E8';
-  ctx.beginPath();
-  ctx.ellipse(0, 33, 28, 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Center stringer
-  ctx.strokeStyle = '#C8B878';
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(0, 27);
-  ctx.lineTo(0, 39);
-  ctx.stroke();
-
-  // Traction pad — front
-  ctx.fillStyle = 'rgba(40,40,40,0.3)';
-  ctx.beginPath();
-  ctx.ellipse(-8, 32, 8, 3.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Traction pad — rear
-  ctx.fillStyle = 'rgba(40,40,40,0.35)';
-  ctx.beginPath();
-  ctx.ellipse(8, 34, 7, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Rail highlight
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.ellipse(0, 33, 28, 6, 0, -Math.PI * 0.8, Math.PI * 0.1);
-  ctx.stroke();
-
-  // Board rail outline
-  ctx.strokeStyle = '#D0CEC0';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.ellipse(0, 33, 28, 6, 0, 0, Math.PI * 2);
-  ctx.stroke();
-
-  // 3 Fins
-  ctx.fillStyle = '#444';
-  ctx.beginPath();
-  ctx.ellipse(-10, 38, 3, 2, -0.3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(10, 38, 3, 2, 0.3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(0, 39, 2.5, 2, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore(); // undo board rotation
-
-  // ═══ LEGS (bent knees, crouch responsive) ═══
-  const kneeDepth = 20 + crouch * 0.4;
-  const footY = 28 + crouch * 0.3;
-
-  // Back leg (right, closer to viewer)
-  ctx.strokeStyle = '#E8B87C';
-  ctx.lineWidth = 7;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(4, 8);
-  ctx.quadraticCurveTo(7 + crouch * 0.2, kneeDepth - 4, 5, footY);
-  ctx.quadraticCurveTo(5, footY + 2, 6, 32);
-  ctx.stroke();
-  // Calf shading
-  ctx.strokeStyle = '#C49A64';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(5, footY - 2);
-  ctx.lineTo(6, 31);
-  ctx.stroke();
-
-  // Front leg (left, further — darker)
-  ctx.strokeStyle = '#D0A068';
-  ctx.lineWidth = 6;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-3, 8);
-  ctx.quadraticCurveTo(-6 - crouch * 0.2, kneeDepth - 4, -5, footY);
-  ctx.quadraticCurveTo(-4, footY + 2, -5, 32);
-  ctx.stroke();
-
-  // ═══ BOARD SHORTS ═══
-  ctx.fillStyle = '#CC3520';
-  ctx.beginPath();
-  ctx.moveTo(-8, -1);
-  ctx.quadraticCurveTo(-10, 4, -8, 10);
-  ctx.lineTo(10, 10);
-  ctx.quadraticCurveTo(12, 4, 10, -1);
-  ctx.closePath();
-  ctx.fill();
-  // Waistband
-  ctx.fillStyle = '#992818';
-  ctx.beginPath();
-  ctx.moveTo(-8, -1);
-  ctx.quadraticCurveTo(0, -2, 10, -1);
-  ctx.quadraticCurveTo(0, 0.5, -8, 0.5);
-  ctx.closePath();
-  ctx.fill();
-  // Side stripe
-  ctx.strokeStyle = '#E8552A';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(9, 1);
-  ctx.lineTo(9, 9);
-  ctx.stroke();
-
-  // ═══ TORSO (rash guard) ═══
-  ctx.fillStyle = '#1E5C99';
-  ctx.beginPath();
-  ctx.moveTo(-9, -18);
-  ctx.quadraticCurveTo(-12, -10, -10, -1);
-  ctx.lineTo(10, -1);
-  ctx.quadraticCurveTo(12, -10, 9, -18);
-  ctx.closePath();
-  ctx.fill();
-  // Lighter center panel
-  ctx.fillStyle = '#2878B8';
-  ctx.beginPath();
-  ctx.moveTo(-4, -16);
-  ctx.quadraticCurveTo(-5, -8, -4, -1);
-  ctx.lineTo(4, -1);
-  ctx.quadraticCurveTo(5, -8, 4, -16);
-  ctx.closePath();
-  ctx.fill();
-  // Dark seam accents
-  ctx.fillStyle = '#153D66';
-  ctx.beginPath();
-  ctx.moveTo(-9, -16);
-  ctx.quadraticCurveTo(-11, -10, -10, -3);
-  ctx.lineTo(-8, -3);
-  ctx.quadraticCurveTo(-9, -10, -7, -16);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(9, -16);
-  ctx.quadraticCurveTo(11, -10, 10, -3);
-  ctx.lineTo(8, -3);
-  ctx.quadraticCurveTo(9, -10, 7, -16);
-  ctx.closePath();
-  ctx.fill();
-
-  // ═══ ARMS ═══
-  const armSpread = rider.airborne ? 1.8 : 1;
-
-  // Lead arm (right) extends toward wave
-  ctx.strokeStyle = '#E8B87C';
-  ctx.lineWidth = 5;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(9, -14);
-  ctx.quadraticCurveTo(16 + shoulderTilt * 0.3, -12 - armSwing * 0.5, 20 * armSpread + shoulderTilt * 0.5, -6 - armSwing);
-  ctx.stroke();
-  ctx.fillStyle = '#E8B87C';
-  ctx.beginPath();
-  ctx.arc(20 * armSpread + shoulderTilt * 0.5, -6 - armSwing, 3, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Back arm (left) for balance
-  ctx.strokeStyle = '#D0A068';
-  ctx.lineWidth = 4.5;
-  ctx.beginPath();
-  ctx.moveTo(-9, -14);
-  ctx.quadraticCurveTo(-16 - shoulderTilt * 0.3, -12 + armSwing * 0.5, -18 * armSpread - shoulderTilt * 0.5, -8 + armSwing);
-  ctx.stroke();
-  ctx.fillStyle = '#D0A068';
-  ctx.beginPath();
-  ctx.arc(-18 * armSpread - shoulderTilt * 0.5, -8 + armSwing, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ═══ NECK ═══
-  ctx.fillStyle = '#E8B87C';
-  ctx.beginPath();
-  ctx.ellipse(0, -20, 4, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ═══ HEAD (turned slightly forward) ═══
-  ctx.fillStyle = '#E8B87C';
-  ctx.beginPath();
-  ctx.ellipse(1, -29, 8, 9, 0, 0, Math.PI * 2);
-  ctx.fill();
-  // Ear (right side visible)
-  ctx.fillStyle = '#D0A068';
-  ctx.beginPath();
-  ctx.ellipse(9, -28, 2.5, 3, 0.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#C49A64';
-  ctx.beginPath();
-  ctx.ellipse(9, -28, 1.5, 2, 0.2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ═══ HAIR ═══
-  // Dark brown base
-  ctx.fillStyle = '#6B4226';
-  ctx.beginPath();
-  ctx.ellipse(0, -34, 9, 7, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(-3, -32, 8, 6, -0.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(3, -33, 7, 5, 0.15, 0, Math.PI * 2);
-  ctx.fill();
-  // Wind-blown top tuft
-  ctx.beginPath();
-  ctx.ellipse(1, -38, 5, 4, 0.1, 0, Math.PI * 2);
-  ctx.fill();
-  // Sun-bleached highlights
-  ctx.fillStyle = '#9B6A3C';
-  ctx.beginPath();
-  ctx.ellipse(2, -37, 3, 2.5, 0.2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(-4, -34, 2.5, 2, -0.3, 0, Math.PI * 2);
-  ctx.fill();
-  // Dark underside edges
-  ctx.fillStyle = '#4A2E16';
-  ctx.beginPath();
-  ctx.ellipse(-6, -32, 3, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.ellipse(6, -32, 2.5, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.restore();
-}
-
-function drawBoardWake(x, y) {
-  const speed = Math.sqrt(rider.vx * rider.vx + rider.vy * rider.vy);
-  if (speed < 0.5) return;
-  const intensity = Math.min(1, speed / 5);
-
-  // Wake trail — two diverging curves
-  ctx.strokeStyle = `rgba(200,240,255,${0.25 * intensity})`;
-  ctx.lineWidth = 1.5;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(x - 8, y + 36);
-  ctx.quadraticCurveTo(x - 16 - speed * 2, y + 42, x - 22 - speed * 2.5, y + 48);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x + 8, y + 36);
-  ctx.quadraticCurveTo(x + 16 + speed * 2, y + 42, x + 22 + speed * 2.5, y + 48);
-  ctx.stroke();
-
-  // Spray mist at board tail
-  const mistGrad = ctx.createRadialGradient(x, y + 38, 1, x, y + 38, 12 + speed * 2);
-  mistGrad.addColorStop(0, `rgba(200,240,255,${0.2 * intensity})`);
-  mistGrad.addColorStop(1, 'rgba(200,240,255,0)');
-  ctx.fillStyle = mistGrad;
-  ctx.beginPath();
-  ctx.arc(x, y + 38, 12 + speed * 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Smooth droplets
-  for (let i = 0; i < 5 * intensity; i++) {
-    ctx.fillStyle = `rgba(200,240,255,${0.25 * intensity})`;
-    ctx.beginPath();
-    ctx.arc(x + (Math.random() - 0.5) * 28, y + 38 + Math.random() * 10,
-      1 + Math.random() * 1.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Rooster tail on hard carves
-  if (speed > 3) {
-    const dir = -Math.sign(rider.vx);
-    const ri = Math.min(1, (speed - 3) / 4);
-
-    ctx.strokeStyle = `rgba(255,255,255,${0.35 * ri})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, y + 34);
-    ctx.bezierCurveTo(x + dir * 14, y + 22, x + dir * 24, y + 16 - speed, x + dir * 34, y + 10 - speed * 1.5);
-    ctx.stroke();
-
-    for (let i = 0; i < 7 * ri; i++) {
-      ctx.fillStyle = `rgba(255,255,255,${0.35 * ri * Math.random()})`;
-      ctx.beginPath();
-      ctx.arc(x + dir * (12 + Math.random() * 22),
-        y + 24 + Math.random() * 14 - speed, 1 + Math.random() * 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-}
-
-// ── Game Flow ──
+// ══════════════════════════════════════════════
+//  GAME LIFECYCLE
+// ══════════════════════════════════════════════
 function startGame() {
-  gameState = STATE.PLAYING;
+  gameState = 'riding';
   gameRunning = true;
   score = 0;
-  frameCount = 0;
   combo = 1;
   comboTimer = 0;
   bestCombo = 1;
-  floatingTexts = [];
-  particles = [];
-  rider.x = W * 0.4;
-  rider.y = H * 0.5;
-  rider.vx = 0;
-  rider.vy = 0;
-  rider.airborne = false;
-  rider.airTime = 0;
-  rider.airHeight = 0;
-  waveNarrowFactor = 1.0;
-  sweetSpotSize = 1.0;
-  turbulenceLevel = 0;
-  wavePushForce = 0.04;
-  difficultyLevel = 1;
+  rideTime = 0;
+  totalAirs = 0;
+  totalCarves = 0;
+  difficulty = 0;
   difficultyTimer = 0;
-  rogueWaveTimer = 0;
-  rogueWaveActive = false;
-  dangerFrontTimer = 0;
-  dangerBackTimer = 0;
-  offWaveTimer = 0;
+  waveWidth = WAVE_WIDTH_BASE;
+  sweetSpotWidth = 60;
+  turbulence = 0;
+  scrollSpeed = 3;
+  particles = [];
+  sprayParticles = [];
+  foamTrail = [];
+  ripples = [];
   betaHistory = [];
-  pumpActive = false;
-  pumpBoost = 0;
-  fallTimer = 0;
-  rideStartTime = performance.now();
+  pumpCooldown = 0;
+  pumpCount = 0;
+
+  surfer.x = WAVE_CENTER_X;
+  surfer.y = SURFER_START_Y;
+  surfer.vx = 0;
+  surfer.vy = 0;
+  surfer.speed = 0;
+  surfer.rotation = 0;
+  surfer.kneeCompress = 0;
+  surfer.armSpread = 0.5;
+  surfer.boardAngle = 0;
+  surfer.onWave = true;
+  surfer.airTime = 0;
+
   document.getElementById('game-over-overlay').style.display = 'none';
 }
 
-function showGameOver() {
-  const rideTime = ((performance.now() - rideStartTime) / 1000).toFixed(1);
+function endGame() {
+  gameState = 'gameover';
+  gameRunning = false;
   document.getElementById('final-score').textContent = 'Score: ' + score;
-  document.getElementById('ride-time').textContent = 'Ride time: ' + rideTime + 's';
-  document.getElementById('best-combo').textContent = 'Best combo: x' + bestCombo;
+  document.getElementById('stats-display').innerHTML =
+    'Ride time: ' + (rideTime / 60).toFixed(1) + 's<br>' +
+    'Best combo: x' + bestCombo + '<br>' +
+    'Airs: ' + totalAirs + ' &bull; Carves: ' + totalCarves;
   document.getElementById('game-over-overlay').style.display = 'flex';
   if (conn && conn.open) {
     conn.send(JSON.stringify({ type: 'gameover', score }));
+  }
+  // Wipeout particles
+  for (let i = 0; i < 40; i++) {
+    spawnSpray(surfer.x, surfer.y, (Math.random()-0.5)*8, (Math.random()-0.5)*8, 1.5);
   }
 }
 
@@ -1615,65 +454,857 @@ function restartGame() {
   startGame();
 }
 
-// ── Main Loop ──
+// ══════════════════════════════════════════════
+//  INPUT PROCESSING
+// ══════════════════════════════════════════════
+function processInput() {
+  let gamma = 0, beta = 0;
+
+  if (controllerConnected) {
+    // Interpolate between sensor readings for smooth 60fps
+    const elapsed = performance.now() - sensorTimestamp;
+    const t = Math.min(1, elapsed / 33);
+    gamma = prevSensorGamma + (lastSensorGamma - prevSensorGamma) * t - GAMMA_BIAS;
+    beta = prevSensorBeta + (lastSensorBeta - prevSensorBeta) * t - BETA_BIAS;
+  }
+
+  // Keyboard fallback
+  if (!controllerConnected) {
+    if (keys['ArrowLeft']) gamma = -6;
+    else if (keys['ArrowRight']) gamma = 6;
+    if (keys['ArrowUp']) beta = -5;
+    else if (keys['ArrowDown']) beta = 5;
+  }
+
+  // Clamp and dead zone for gamma
+  gamma = Math.max(-GYRO_RANGE, Math.min(GYRO_RANGE, gamma));
+  if (Math.abs(gamma) < DEAD_ZONE) gamma = 0;
+  else gamma -= Math.sign(gamma) * DEAD_ZONE;
+
+  // Clamp and dead zone for beta
+  beta = Math.max(-GYRO_RANGE, Math.min(GYRO_RANGE, beta));
+  if (Math.abs(beta) < DEAD_ZONE) beta = 0;
+  else beta -= Math.sign(beta) * DEAD_ZONE;
+
+  // Normalize to -1..1
+  inputGamma = gamma / (GYRO_RANGE - DEAD_ZONE);
+  inputBeta = beta / (GYRO_RANGE - DEAD_ZONE);
+}
+
+// ══════════════════════════════════════════════
+//  WAVE GEOMETRY
+// ══════════════════════════════════════════════
+function getWaveLeftEdge(y) {
+  // Wake spreads from boat — V shape widening downward
+  const t = Math.max(0, (y - WAKE_ORIGIN_Y) / (H - WAKE_ORIGIN_Y));
+  const spread = waveWidth * 0.5 * t;
+  const center = WAKE_ORIGIN_X - spread * 0.1;
+  const turb = turbulence * Math.sin(y * 0.02 + waterTime * 2) * 3;
+  return center - spread + turb;
+}
+
+function getWaveRightEdge(y) {
+  const t = Math.max(0, (y - WAKE_ORIGIN_Y) / (H - WAKE_ORIGIN_Y));
+  const spread = waveWidth * 0.5 * t;
+  const center = WAKE_ORIGIN_X + spread * 0.1;
+  const turb = turbulence * Math.sin(y * 0.025 + waterTime * 2.3) * 3;
+  return center + spread + turb;
+}
+
+function getWaveCenterX(y) {
+  return (getWaveLeftEdge(y) + getWaveRightEdge(y)) / 2;
+}
+
+function getWaveWidthAt(y) {
+  return getWaveRightEdge(y) - getWaveLeftEdge(y);
+}
+
+// How far across the wave face (0=trough/left, 1=lip/right)
+function getWavePosition(x, y) {
+  const left = getWaveLeftEdge(y);
+  const right = getWaveRightEdge(y);
+  if (right <= left) return 0.5;
+  return (x - left) / (right - left);
+}
+
+// Wave surface height offset — the rolling curve of the wake
+function getWaveSurfaceY(x, y) {
+  const pos = getWavePosition(x, y);
+  // Trough on left (low), face rises, lip on right (high then curls down)
+  const profile = -10 * Math.sin(pos * Math.PI * 0.9) + 5 * pos;
+  const ripple = Math.sin(x * 0.08 + waterTime * 3) * 1.5;
+  return profile + ripple;
+}
+
+// Sweet spot — the power pocket of the wave
+function getSweetSpotCenter(y) {
+  const center = getWaveCenterX(y);
+  const width = getWaveWidthAt(y);
+  return center + width * 0.15; // Slightly toward lip
+}
+
+function isInSweetSpot(x, y) {
+  const ssCenter = getSweetSpotCenter(y);
+  return Math.abs(x - ssCenter) < sweetSpotWidth * 0.5;
+}
+
+function isOnWave(x, y) {
+  const left = getWaveLeftEdge(y);
+  const right = getWaveRightEdge(y);
+  return x > left + 8 && x < right - 8 && y > WAKE_ORIGIN_Y + 20 && y < H - 20;
+}
+
+// ══════════════════════════════════════════════
+//  PUMP DETECTION
+// ══════════════════════════════════════════════
+function detectPump() {
+  const now = performance.now();
+  betaHistory.push({ t: now, v: inputBeta });
+  // Keep 2 seconds of history
+  while (betaHistory.length > 0 && now - betaHistory[0].t > 2000) {
+    betaHistory.shift();
+  }
+  if (betaHistory.length < 6 || pumpCooldown > 0) {
+    pumpCooldown = Math.max(0, pumpCooldown - 1);
+    return false;
+  }
+
+  // Look for zero crossings in beta
+  let crossings = 0;
+  let lastSign = Math.sign(betaHistory[0].v);
+  let crossTimes = [];
+  for (let i = 1; i < betaHistory.length; i++) {
+    const s = Math.sign(betaHistory[i].v);
+    if (s !== 0 && s !== lastSign) {
+      crossings++;
+      crossTimes.push(betaHistory[i].t);
+      lastSign = s;
+    }
+  }
+
+  if (crossTimes.length >= 3) {
+    const period = (crossTimes[crossTimes.length - 1] - crossTimes[0]) / (crossTimes.length - 1) * 2;
+    const freq = 1000 / period;
+    if (freq >= PUMP_FREQ_MIN && freq <= PUMP_FREQ_MAX) {
+      // Check amplitude
+      const vals = betaHistory.map(b => b.v);
+      const amplitude = Math.max(...vals) - Math.min(...vals);
+      if (amplitude > 0.3) {
+        pumpCooldown = 15;
+        pumpCount++;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ══════════════════════════════════════════════
+//  PHYSICS UPDATE
+// ══════════════════════════════════════════════
+function updatePhysics() {
+  if (gameState !== 'riding' && gameState !== 'airborne') return;
+
+  processInput();
+
+  if (gameState === 'riding') {
+    // Lateral movement (gamma → carving across wave face)
+    const carveForce = inputGamma * 0.35;
+    surfer.vx += carveForce;
+    surfer.vx *= DRAG;
+    surfer.vx = Math.max(-MAX_VEL, Math.min(MAX_VEL, surfer.vx));
+
+    // Fore/aft movement (beta → toward/away from boat)
+    const foreAftForce = -inputBeta * 0.25;
+    surfer.vy += foreAftForce;
+    // Wave push — naturally pushes surfer forward (toward boat = up)
+    surfer.vy -= WAVE_PUSH + surfer.speed * 0.01;
+    surfer.vy *= DRAG;
+    surfer.vy = Math.max(-MAX_VEL * 0.6, Math.min(MAX_VEL * 0.6, surfer.vy));
+
+    // Apply velocity
+    surfer.x += surfer.vx;
+    surfer.y += surfer.vy;
+
+    // Pump detection
+    if (detectPump()) {
+      surfer.speed = Math.min(surfer.speed + PUMP_BOOST, 5);
+      showTrick('PUMP! +speed', '#44ff88');
+      addScore(15);
+    }
+    surfer.speed *= 0.997; // Slow speed decay
+
+    // Carve detection — big lateral speed changes
+    if (Math.abs(surfer.vx) > 3.5) {
+      totalCarves++;
+      addScore(CARVE_BONUS);
+      // Spray on carve
+      const dir = Math.sign(surfer.vx);
+      for (let i = 0; i < 8; i++) {
+        spawnSpray(
+          surfer.x - dir * 12,
+          surfer.y + 15,
+          -dir * (2 + Math.random() * 4),
+          -(1 + Math.random() * 3),
+          0.8
+        );
+      }
+    }
+
+    // Air launch — near lip with enough speed
+    const wavePos = getWavePosition(surfer.x, surfer.y);
+    if (wavePos > 0.85 && surfer.speed > 2 && Math.abs(surfer.vx) > 2) {
+      gameState = 'airborne';
+      surfer.onWave = false;
+      surfer.airTime = 0;
+      surfer.airStartY = surfer.y;
+      surfer.airVx = surfer.vx * 0.8;
+      surfer.airVy = -(3 + surfer.speed * 0.8);
+      totalAirs++;
+      showTrick('AIR!', '#00e5ff');
+      addScore(AIR_BONUS);
+      // Launch spray
+      for (let i = 0; i < 15; i++) {
+        spawnSpray(surfer.x, surfer.y + 10, (Math.random()-0.5)*6, -(2+Math.random()*4), 1.2);
+      }
+    }
+
+    // Sweet spot bonus
+    if (isInSweetSpot(surfer.x, surfer.y)) {
+      addScore(SWEET_SPOT_BONUS);
+      comboTimer = performance.now();
+    }
+
+    // Regular points
+    addScore(POINTS_PER_FRAME);
+    rideTime++;
+
+    // Check fall conditions
+    checkFall();
+
+    // Visual state
+    surfer.rotation = surfer.vx * 0.06;
+    surfer.kneeCompress = Math.abs(inputBeta) * 0.5 + (pumpCooldown > 0 ? 0.3 : 0);
+    surfer.boardAngle = surfer.vx * 0.04;
+
+  } else if (gameState === 'airborne') {
+    // Parabolic arc
+    surfer.airTime++;
+    surfer.airVy += GRAVITY;
+    surfer.x += surfer.airVx;
+    surfer.y += surfer.airVy;
+    surfer.rotation = surfer.airVx * 0.1 + surfer.airTime * 0.05;
+    surfer.kneeCompress = 0.7;
+    surfer.armSpread = 1.0;
+
+    // Check landing
+    if (surfer.y >= surfer.airStartY && surfer.airTime > 10) {
+      if (isOnWave(surfer.x, surfer.y)) {
+        // Successful landing!
+        gameState = 'riding';
+        surfer.onWave = true;
+        surfer.vx = surfer.airVx * 0.5;
+        surfer.vy = 0;
+        addScore(LAND_BONUS);
+        showTrick('LANDED! +' + LAND_BONUS, '#ffd700');
+        combo++;
+        if (combo > bestCombo) bestCombo = combo;
+        // Landing splash
+        for (let i = 0; i < 20; i++) {
+          spawnSpray(surfer.x, surfer.y + 10, (Math.random()-0.5)*5, -(1+Math.random()*3), 1);
+        }
+      } else {
+        endGame();
+        return;
+      }
+    }
+
+    // Fell too far
+    if (surfer.y > H + 50 || surfer.x < -50 || surfer.x > W + 50) {
+      endGame();
+      return;
+    }
+  }
+
+  // Difficulty ramp
+  difficultyTimer++;
+  if (difficultyTimer % (60 * 30) === 0) { // every 30 seconds
+    difficulty++;
+    waveWidth = Math.max(80, WAVE_WIDTH_BASE - difficulty * 10);
+    sweetSpotWidth = Math.max(25, 60 - difficulty * 5);
+    turbulence = Math.min(1, difficulty * 0.15);
+    scrollSpeed = Math.min(5, 3 + difficulty * 0.3);
+  }
+
+  // Combo decay
+  if (performance.now() - comboTimer > COMBO_DECAY_TIME && combo > 1) {
+    combo = Math.max(1, combo - 1);
+  }
+}
+
+function checkFall() {
+  // Off wave
+  if (!isOnWave(surfer.x, surfer.y)) {
+    endGame();
+    return;
+  }
+
+  // Too close to boat
+  if (surfer.y < BOAT_Y + 50) {
+    showTrick('HIT THE BOAT!', '#ff4444');
+    endGame();
+    return;
+  }
+
+  // Fell behind (too far back)
+  if (surfer.y > H - 30) {
+    showTrick('LOST THE WAVE!', '#ff4444');
+    endGame();
+    return;
+  }
+}
+
+function addScore(pts) {
+  score += pts * combo;
+}
+
+function showTrick(text, color) {
+  trickText = text;
+  trickTimer = 90;
+  document.getElementById('trick-display').textContent = text;
+  document.getElementById('trick-display').style.color = color || '#00e5ff';
+  document.getElementById('trick-display').style.opacity = '1';
+}
+
+// ══════════════════════════════════════════════
+//  PARTICLES & EFFECTS
+// ══════════════════════════════════════════════
+function spawnSpray(x, y, vx, vy, size) {
+  sprayParticles.push({
+    x, y, vx, vy,
+    size: size + Math.random() * 2,
+    life: 40 + Math.random() * 30,
+    maxLife: 40 + Math.random() * 30,
+    alpha: 0.8 + Math.random() * 0.2
+  });
+}
+
+function updateParticles() {
+  for (let i = sprayParticles.length - 1; i >= 0; i--) {
+    const p = sprayParticles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.08; // gravity on droplets
+    p.life--;
+    if (p.life <= 0) {
+      sprayParticles.splice(i, 1);
+    }
+  }
+
+  // Foam trail behind board
+  if (gameState === 'riding') {
+    foamTrail.push({
+      x: surfer.x,
+      y: surfer.y + 18,
+      life: 80,
+      maxLife: 80,
+      size: 3 + Math.abs(surfer.vx) * 0.8
+    });
+  }
+  for (let i = foamTrail.length - 1; i >= 0; i--) {
+    foamTrail[i].y += scrollSpeed * 0.3;
+    foamTrail[i].life--;
+    if (foamTrail[i].life <= 0) foamTrail.splice(i, 1);
+  }
+  if (foamTrail.length > 120) foamTrail.splice(0, foamTrail.length - 120);
+
+  // Board spray when riding
+  if (gameState === 'riding' && Math.abs(surfer.vx) > 1) {
+    const sprayIntensity = Math.abs(surfer.vx) / MAX_VEL;
+    if (Math.random() < sprayIntensity) {
+      const dir = -Math.sign(surfer.vx);
+      spawnSpray(
+        surfer.x + dir * 8,
+        surfer.y + 14,
+        dir * (1 + Math.random() * 2 * sprayIntensity),
+        -(0.5 + Math.random() * 2 * sprayIntensity),
+        0.5 + sprayIntensity
+      );
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+//  RENDERING — WATER
+// ══════════════════════════════════════════════
+function drawWater() {
+  waterTime += 0.016;
+  scrollY = (scrollY + scrollSpeed) % 60;
+
+  // --- Sky/horizon gradient ---
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H);
+  skyGrad.addColorStop(0, '#0b2948');
+  skyGrad.addColorStop(0.15, '#0d3a5c');
+  skyGrad.addColorStop(0.4, '#0a5a7a');
+  skyGrad.addColorStop(1, '#074060');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // --- Flat water with flowing ripples ---
+  drawFlatWater();
+
+  // --- Wake wave ---
+  drawWakeWave();
+}
+
+function drawFlatWater() {
+  // Subtle horizontal ripple lines that scroll down
+  ctx.globalAlpha = 0.12;
+  for (let y = -60 + (scrollY % 30); y < H; y += 30) {
+    const wave = Math.sin(y * 0.03 + waterTime * 1.5) * 15;
+    ctx.strokeStyle = '#4db8d4';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    for (let x = 0; x < W; x += 4) {
+      const yy = y + Math.sin((x + wave) * 0.04 + waterTime * 2) * 3;
+      if (x === 0) ctx.moveTo(x, yy);
+      else ctx.lineTo(x, yy);
+    }
+    ctx.stroke();
+  }
+
+  // Light reflections / glints
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = '#8fdfff';
+  for (let i = 0; i < 20; i++) {
+    const rx = ((i * 97 + waterTime * 40) % W);
+    const ry = ((i * 131 + scrollY) % H);
+    const sz = 1 + Math.sin(waterTime * 3 + i) * 1;
+    if (sz > 0.5) {
+      ctx.fillRect(rx, ry, sz * 3, sz);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawWakeWave() {
+  // The wake is a V-shaped area spreading from the boat
+  // Left side = trough (dark), center = face, right side = lip (bright/foamy)
+
+  for (let y = WAKE_ORIGIN_Y + 10; y < H; y += 1) {
+    const left = getWaveLeftEdge(y);
+    const right = getWaveRightEdge(y);
+    const w = right - left;
+    if (w <= 0) continue;
+
+    // Wave face gradient — dark trough to bright lip
+    const grad = ctx.createLinearGradient(left, 0, right, 0);
+    const depthFactor = (y - WAKE_ORIGIN_Y) / (H - WAKE_ORIGIN_Y);
+
+    // Trough: deep dark blue
+    grad.addColorStop(0, `rgba(4,40,70,${0.7 + depthFactor * 0.3})`);
+    // Lower face: medium blue
+    grad.addColorStop(0.2, `rgba(10,80,130,${0.6 + depthFactor * 0.3})`);
+    // Mid face: catching light
+    grad.addColorStop(0.5, `rgba(20,140,180,${0.5 + depthFactor * 0.3})`);
+    // Upper face: bright teal
+    grad.addColorStop(0.75, `rgba(40,190,210,${0.6 + depthFactor * 0.2})`);
+    // Lip: white/foam
+    grad.addColorStop(0.92, `rgba(140,230,240,${0.5 + depthFactor * 0.3})`);
+    grad.addColorStop(1, `rgba(200,245,255,${0.4 + depthFactor * 0.2})`);
+
+    ctx.fillStyle = grad;
+    ctx.fillRect(left, y, w, 1.5);
+  }
+
+  // Wave lip foam line — right edge of wake
+  ctx.globalAlpha = 0.6;
+  ctx.strokeStyle = '#c0f0ff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let y = WAKE_ORIGIN_Y + 20; y < H; y += 3) {
+    const right = getWaveRightEdge(y);
+    const jitter = Math.sin(y * 0.1 + waterTime * 5) * 2;
+    if (y === WAKE_ORIGIN_Y + 20) ctx.moveTo(right + jitter, y);
+    else ctx.lineTo(right + jitter, y);
+  }
+  ctx.stroke();
+
+  // Trough shadow — left edge
+  ctx.strokeStyle = 'rgba(0,20,40,0.4)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  for (let y = WAKE_ORIGIN_Y + 20; y < H; y += 3) {
+    const left = getWaveLeftEdge(y);
+    const jitter = Math.sin(y * 0.08 + waterTime * 4) * 1.5;
+    if (y === WAKE_ORIGIN_Y + 20) ctx.moveTo(left + jitter, y);
+    else ctx.lineTo(left + jitter, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Foam streaks on the wave face
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#b0eeff';
+  for (let i = 0; i < 12; i++) {
+    const fy = WAKE_ORIGIN_Y + 60 + ((i * 53 + scrollY * 2) % (H - WAKE_ORIGIN_Y - 80));
+    const left = getWaveLeftEdge(fy);
+    const right = getWaveRightEdge(fy);
+    const fx = left + (right - left) * (0.3 + Math.sin(i * 2.7 + waterTime) * 0.2);
+    const fLen = 10 + Math.sin(i * 1.3 + waterTime * 2) * 8;
+    ctx.fillRect(fx, fy, fLen, 1.5);
+  }
+  ctx.globalAlpha = 1;
+
+  // Sweet spot indicator — subtle glow
+  if (gameState === 'riding') {
+    const ssCenter = getSweetSpotCenter(surfer.y);
+    const ssHalf = sweetSpotWidth * 0.5;
+    const ssGrad = ctx.createRadialGradient(ssCenter, surfer.y, 0, ssCenter, surfer.y, ssHalf + 10);
+    ssGrad.addColorStop(0, 'rgba(0,255,200,0.08)');
+    ssGrad.addColorStop(1, 'rgba(0,255,200,0)');
+    ctx.fillStyle = ssGrad;
+    ctx.fillRect(ssCenter - ssHalf - 10, surfer.y - 40, sweetSpotWidth + 20, 80);
+  }
+}
+
+// ══════════════════════════════════════════════
+//  RENDERING — BOAT
+// ══════════════════════════════════════════════
+function drawBoat() {
+  const bx = W * 0.5;
+  const by = BOAT_Y;
+  const bob = Math.sin(waterTime * 2.5) * 2;
+
+  ctx.save();
+  ctx.translate(bx, by + bob);
+
+  // Hull
+  ctx.fillStyle = '#e8e8e8';
+  ctx.beginPath();
+  ctx.moveTo(-22, 5);
+  ctx.quadraticCurveTo(-25, 15, -18, 22);
+  ctx.lineTo(18, 22);
+  ctx.quadraticCurveTo(25, 15, 22, 5);
+  ctx.lineTo(15, -5);
+  ctx.quadraticCurveTo(0, -12, -15, -5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Hull accent
+  ctx.fillStyle = '#cc3333';
+  ctx.beginPath();
+  ctx.moveTo(-20, 12);
+  ctx.lineTo(20, 12);
+  ctx.lineTo(18, 18);
+  ctx.lineTo(-18, 18);
+  ctx.closePath();
+  ctx.fill();
+
+  // Windshield
+  ctx.fillStyle = 'rgba(100,200,255,0.5)';
+  ctx.beginPath();
+  ctx.moveTo(-8, -2);
+  ctx.lineTo(8, -2);
+  ctx.lineTo(6, -8);
+  ctx.lineTo(-6, -8);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tower/pylon
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-5, -8);
+  ctx.lineTo(-3, -22);
+  ctx.lineTo(3, -22);
+  ctx.lineTo(5, -8);
+  ctx.stroke();
+
+  // Rope from tower to surfer
+  if (gameState === 'riding' || gameState === 'airborne') {
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, 22);
+    const ropeEndX = surfer.x - bx;
+    const ropeEndY = surfer.y - (by + bob);
+    // Slight sag curve
+    const midX = ropeEndX * 0.5;
+    const midY = ropeEndY * 0.5 + 15;
+    ctx.quadraticCurveTo(midX, midY, ropeEndX, ropeEndY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Wake from boat motor
+  ctx.fillStyle = 'rgba(200,240,255,0.25)';
+  for (let i = 0; i < 6; i++) {
+    const wy = 24 + i * 6;
+    const wx = Math.sin(waterTime * 5 + i) * (2 + i);
+    ctx.beginPath();
+    ctx.ellipse(wx, wy, 4 + i * 2, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════
+//  RENDERING — SURFER
+// ══════════════════════════════════════════════
+function drawSurfer() {
+  const sx = surfer.x;
+  const sy = surfer.y + getWaveSurfaceY(surfer.x, surfer.y) * (surfer.onWave ? 1 : 0);
+
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(surfer.rotation);
+
+  const compress = surfer.kneeCompress;
+  const lean = surfer.vx * 0.02;
+
+  // ── Board ──
+  ctx.save();
+  ctx.rotate(surfer.boardAngle);
+
+  // Board shadow
+  ctx.fillStyle = 'rgba(0,20,40,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(1, 19, 18, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Board body
+  const boardGrad = ctx.createLinearGradient(-16, 12, 16, 12);
+  boardGrad.addColorStop(0, '#f0f0f0');
+  boardGrad.addColorStop(0.5, '#ffffff');
+  boardGrad.addColorStop(1, '#e8e8e8');
+  ctx.fillStyle = boardGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, -2);
+  ctx.quadraticCurveTo(16, 4, 15, 16);
+  ctx.quadraticCurveTo(10, 25, 0, 27);
+  ctx.quadraticCurveTo(-10, 25, -15, 16);
+  ctx.quadraticCurveTo(-16, 4, 0, -2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Board stripe
+  ctx.fillStyle = '#ff3366';
+  ctx.beginPath();
+  ctx.moveTo(-2, 2);
+  ctx.lineTo(2, 2);
+  ctx.lineTo(2, 22);
+  ctx.lineTo(-2, 22);
+  ctx.closePath();
+  ctx.fill();
+
+  // Fins
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.moveTo(-5, 22);
+  ctx.lineTo(-4, 28);
+  ctx.lineTo(-7, 26);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(5, 22);
+  ctx.lineTo(4, 28);
+  ctx.lineTo(7, 26);
+  ctx.closePath();
+  ctx.fill();
+
+  // Rail spray when carving hard
+  if (gameState === 'riding' && Math.abs(surfer.vx) > 2) {
+    const sprayAlpha = Math.min(0.6, (Math.abs(surfer.vx) - 2) / 4);
+    const dir = Math.sign(surfer.vx);
+    ctx.globalAlpha = sprayAlpha;
+    ctx.fillStyle = '#c0f0ff';
+    for (let i = 0; i < 5; i++) {
+      const sx2 = -dir * (12 + i * 3 + Math.random() * 4);
+      const sy2 = 10 + i * 3;
+      ctx.beginPath();
+      ctx.ellipse(sx2, sy2, 2 + Math.random() * 2, 1, lean, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore(); // board transform
+
+  // ── Body ──
+  const bodyOffsetY = -6 + compress * 8;
+
+  // Legs
+  const legSpread = 6 + compress * 3;
+  const legHeight = 12 - compress * 5;
+  ctx.fillStyle = '#2a2a2a';
+  // Back leg
+  ctx.beginPath();
+  ctx.moveTo(-legSpread, bodyOffsetY + 14);
+  ctx.lineTo(-legSpread - 1, bodyOffsetY + 14 + legHeight);
+  ctx.lineTo(-legSpread + 3, bodyOffsetY + 14 + legHeight);
+  ctx.lineTo(-legSpread + 2, bodyOffsetY + 14);
+  ctx.closePath();
+  ctx.fill();
+  // Front leg
+  ctx.beginPath();
+  ctx.moveTo(legSpread - 2, bodyOffsetY + 14);
+  ctx.lineTo(legSpread - 3, bodyOffsetY + 14 + legHeight);
+  ctx.lineTo(legSpread + 1, bodyOffsetY + 14 + legHeight);
+  ctx.lineTo(legSpread, bodyOffsetY + 14);
+  ctx.closePath();
+  ctx.fill();
+
+  // Torso
+  const torsoGrad = ctx.createLinearGradient(0, bodyOffsetY, 0, bodyOffsetY + 14);
+  torsoGrad.addColorStop(0, '#1a8ccc');
+  torsoGrad.addColorStop(1, '#1570a5');
+  ctx.fillStyle = torsoGrad;
+  ctx.beginPath();
+  ctx.moveTo(-6 + lean * 5, bodyOffsetY);
+  ctx.lineTo(6 + lean * 5, bodyOffsetY);
+  ctx.lineTo(8 + lean * 3, bodyOffsetY + 14);
+  ctx.lineTo(-8 + lean * 3, bodyOffsetY + 14);
+  ctx.closePath();
+  ctx.fill();
+
+  // Arms
+  const armY = bodyOffsetY + 4;
+  const armLength = 10 + surfer.armSpread * 6;
+  const armAngle = lean * 0.5;
+  ctx.strokeStyle = '#e8b87a';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  // Left arm
+  ctx.beginPath();
+  ctx.moveTo(-6 + lean * 4, armY);
+  ctx.lineTo(-6 - armLength * Math.cos(armAngle + 0.3), armY - armLength * Math.sin(armAngle + 0.3) * 0.5);
+  ctx.stroke();
+  // Right arm
+  ctx.beginPath();
+  ctx.moveTo(6 + lean * 4, armY);
+  ctx.lineTo(6 + armLength * Math.cos(-armAngle + 0.3), armY - armLength * Math.sin(-armAngle + 0.3) * 0.5);
+  ctx.stroke();
+
+  // Hands
+  ctx.fillStyle = '#e8b87a';
+  ctx.beginPath();
+  ctx.arc(-6 - armLength * Math.cos(armAngle + 0.3), armY - armLength * Math.sin(armAngle + 0.3) * 0.5, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(6 + armLength * Math.cos(-armAngle + 0.3), armY - armLength * Math.sin(-armAngle + 0.3) * 0.5, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#e8b87a';
+  ctx.beginPath();
+  ctx.arc(lean * 6, bodyOffsetY - 6, 6, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair
+  ctx.fillStyle = '#3a2a1a';
+  ctx.beginPath();
+  ctx.arc(lean * 6, bodyOffsetY - 8, 5, Math.PI, Math.PI * 2);
+  ctx.fill();
+  // Hair flow
+  ctx.beginPath();
+  ctx.moveTo(lean * 6 + 4, bodyOffsetY - 9);
+  ctx.quadraticCurveTo(lean * 6 + 8, bodyOffsetY - 7, lean * 6 + 6 - surfer.vx * 0.5, bodyOffsetY - 4);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#3a2a1a';
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════
+//  RENDERING — EFFECTS
+// ══════════════════════════════════════════════
+function drawEffects() {
+  // Foam trail
+  for (const f of foamTrail) {
+    const alpha = (f.life / f.maxLife) * 0.3;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#b0eeff';
+    ctx.beginPath();
+    ctx.ellipse(f.x, f.y, f.size, f.size * 0.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Spray particles
+  for (const p of sprayParticles) {
+    const alpha = (p.life / p.maxLife) * p.alpha;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#d0f5ff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ══════════════════════════════════════════════
+//  HUD UPDATE
+// ══════════════════════════════════════════════
+function updateHUD() {
+  document.getElementById('score-display').textContent = score;
+
+  if (combo > 1) {
+    document.getElementById('combo-display').textContent = 'x' + combo + ' COMBO';
+    document.getElementById('combo-display').style.opacity = '1';
+  } else {
+    document.getElementById('combo-display').style.opacity = '0';
+  }
+
+  if (trickTimer > 0) {
+    trickTimer--;
+    if (trickTimer <= 20) {
+      document.getElementById('trick-display').style.opacity = (trickTimer / 20).toString();
+    }
+  }
+
+  if (gameRunning) {
+    const secs = Math.floor(rideTime / 60);
+    document.getElementById('time-display').textContent = secs + 's';
+  }
+}
+
+// ══════════════════════════════════════════════
+//  MAIN GAME LOOP
+// ══════════════════════════════════════════════
 function gameLoop() {
   // Clear
   ctx.clearRect(0, 0, W, H);
 
-  // Background layers (back-to-front)
-  drawSky();
-  drawDeepWater();
-  drawWaveFace();
-  drawWaveWall();
-  drawLipFoam();
-  drawWakeLines();
+  // Water background
+  drawWater();
+
+  // Boat
   drawBoat();
-  drawSweetSpot();
 
-  if (gameState === STATE.PLAYING) {
-    frameCount++;
-    processGyro();
-    detectPump();
-    updatePhysics(1);
-    updateDifficulty();
-    updateCombo();
-    spawnCarveSpray();
-
-    // Riding score
-    if (isInSweetSpot(rider.x, rider.y)) {
-      score += 1;
-    } else if (isOnWave(rider.x, rider.y)) {
-      score += 0.5;
-    }
-
-    // Pump score
-    if (pumpActive) score += 2;
-
-    drawDangerWarning();
-  } else if (gameState === STATE.FALLING) {
-    frameCount++;
-    updateFall();
+  if (gameRunning) {
+    updatePhysics();
+    updateParticles();
   }
 
-  // Board wake before rider so spray trail is behind
-  if (!rider.airborne && gameState !== STATE.GAME_OVER) {
-    const ry = rider.y - (rider.airborne ? rider.airHeight * 12 : 0);
-    drawBoardWake(rider.x, ry);
+  // Effects behind surfer
+  drawEffects();
+
+  // Surfer
+  if (gameState !== 'waiting') {
+    drawSurfer();
   }
 
-  // Draw rider
-  drawRider();
-
-  // Particles & floating text
-  updateParticles();
-  updateFloatingTexts();
-
-  // Score display
-  document.getElementById('score-display').textContent = 'SCORE: ' + Math.floor(score);
+  // HUD
+  updateHUD();
 
   requestAnimationFrame(gameLoop);
 }
 
+// Start the render loop
 gameLoop();
 </script>
 </body>
